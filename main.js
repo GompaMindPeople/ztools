@@ -34,6 +34,11 @@ const iconCache = new Map();
 const userDataDir = () => app.getPath('userData');
 const userPluginsDir = () => path.join(userDataDir(), 'plugins');
 
+// 开机自启的启动参数:开发模式(electron .)需带应用路径,绿色版无参数;读写必须一致
+function loginItemArgs() {
+  return process.defaultApp ? [app.getAppPath()] : [];
+}
+
 // ---------------------------------------------------------------- 窗口
 
 function positionWindow() {
@@ -707,13 +712,12 @@ async function pluginApi(event, payload) {
     }
     case 'getIndexStatus': return { building: fileIndex.building, count: fileIndex.entries.length };
     case 'getHotkey': return activeHotkey;
-    case 'getAutoLaunch': return app.getLoginItemSettings().openAtLogin;
+    case 'getAutoLaunch': return app.getLoginItemSettings({ args: loginItemArgs() }).openAtLogin;
     case 'setAutoLaunch': {
       const on = !!args[0];
-      const opts = { openAtLogin: on, args: [] };
-      if (process.defaultApp) opts.args = [app.getAppPath()]; // 开发模式(electron .)需显式指定应用路径
-      app.setLoginItemSettings(opts);
-      return app.getLoginItemSettings().openAtLogin;
+      app.setLoginItemSettings({ openAtLogin: on, args: loginItemArgs() });
+      // 读取时必须带同样的 args,否则 Electron 按参数匹配注册表会误报 false
+      return app.getLoginItemSettings({ args: loginItemArgs() }).openAtLogin;
     }
     default: return { error: 'unknown method: ' + method };
   }
