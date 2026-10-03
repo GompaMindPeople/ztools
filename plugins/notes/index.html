@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>便利贴</title>
+<style>
+  /* ---- 管理模式(主面板内) ---- */
+  body.manager { margin: 0; padding: 18px 22px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .tip { color: #8f8fa3; font-size: 12px; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  button.primary { background: #4a6dff; color: #fff; }
+  .note-row { display: flex; align-items: center; gap: 10px; background: #15151c; border: 1px solid #2c2c3a; border-radius: 10px; padding: 9px 12px; margin: 6px 0; cursor: pointer; }
+  .note-row:hover { border-color: #ffd24d; }
+  .preview { flex: 1; min-width: 0; color: #d6d6e2; font-size: 13px; white-space: pre-wrap; max-height: 54px; overflow: hidden; word-break: break-all; }
+  .preview .empty { color: #6d6d85; font-style: italic; }
+  .meta { color: #6d6d85; font-size: 11px; flex: none; }
+  .none { color: #6d6d85; padding: 26px; text-align: center; }
+
+  /* ---- 便签窗模式(独立置顶小窗) ---- */
+  body.sticky { margin: 0; background: #fffbe0; color: #3a3625; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .bar { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 10px; background: rgba(255, 210, 77, 0.45); -webkit-app-region: drag; }
+  .bar .t { font-size: 12px; color: #7a6f3d; }
+  .bar button { background: none; border: none; color: #7a6f3d; font-size: 13px; cursor: pointer; padding: 2px 8px; border-radius: 6px; -webkit-app-region: no-drag; }
+  .bar button:hover { background: rgba(0, 0, 0, 0.08); color: #3a3625; }
+  textarea { flex: 1; border: none; outline: none; resize: none; background: transparent; color: #3a3625; font: inherit; padding: 10px 12px; -webkit-app-region: no-drag; }
+  .status { flex: none; font-size: 11px; color: #a89c66; padding: 2px 12px 6px; }
+</style>
+</head>
+<body>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const standalone = params.get('standalone') === '1';
+  document.body.className = standalone ? 'sticky' : 'manager';
+
+  async function loadNotes() {
+    return (await ztools.api.dbGet('notes')) || [];
+  }
+  async function saveNotes(notes) {
+    await ztools.api.dbSet('notes', notes);
+  }
+
+  if (standalone) {
+    initSticky(params.get('query') || '');
+  } else {
+    initManager();
+  }
+
+  // ---------------- 便签窗 ----------------
+
+  async function initSticky(id) {
+    const notes = await loadNotes();
+    let note = notes.find((n) => n.id === id);
+    if (!note) {
+      note = { id, text: '', at: Date.now() };
+      notes.push(note);
+      await saveNotes(notes);
+    }
+
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = '📝 ' + new Date(note.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.title = '关闭(空便签将删除)';
+    closeBtn.addEventListener('click', closeSticky);
+    bar.append(t, closeBtn);
+
+    const ta = document.createElement('textarea');
+    ta.placeholder = '写点什么…(自动保存,可拖动标题栏)';
+    ta.value = note.text;
+
+    const status = document.createElement('div');
+    status.className = 'status';
+    status.textContent = '自动保存';
+
+    document.body.append(bar, ta, status);
+    ta.focus();
+
+    let timer = 0;
+    ta.addEventListener('input', () => {
+      note.text = ta.value;
+      status.textContent = '保存中…';
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        await saveNotes(await reloadMerge(note));
+        status.textContent = '已保存 · ' + ta.value.length + ' 字';
+      }, 400);
+    });
+
+    // 多窗口并发:重新读全量,仅更新自己这条,避免覆盖其它窗口的修改
+    async function reloadMerge(mine) {
+      const all = await loadNotes();
+      const idx = all.findIndex((n) => n.id === mine.id);
+      if (idx >= 0) all[idx] = mine;
+      else all.push(mine);
+      return all;
+    }
+
+    async function closeSticky() {
+      const all = await loadNotes();
+      const kept = all.filter((n) => n.id !== id || (n.text || '').trim() !== '');
+      await saveNotes(kept);
+      await ztools.api.closeSelf();
+    }
+  }
+
+  // ---------------- 管理页 ----------------
+
+  async function initManager() {
+    const head = document.createElement('div');
+    head.className = 'head';
+    const tip = document.createElement('span');
+    tip.className = 'tip';
+    tip.id = 'tip';
+    tip.textContent = '加载中…';
+    const newBtn = document.createElement('button');
+    newBtn.className = 'primary';
+    newBtn.textContent = '＋ 新建便利贴';
+    newBtn.addEventListener('click', () => createNote());
+    head.append(tip, newBtn);
+
+    const list = document.createElement('div');
+    list.id = 'list';
+    document.body.append(head, list);
+
+    async function createNote() {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const notes = await loadNotes();
+      notes.push({ id, text: '', at: Date.now() });
+      await saveNotes(notes);
+      const r = await ztools.api.openPluginWindow({ width: 300, height: 300, query: id });
+      if (!r || r.ok === false) {
+        await ztools.api.notify('便利贴', '便签窗口打开失败:' + ((r && r.error) || '未知错误'));
+      }
+      render(); // 面板保留并刷新列表,用户能看到新便签已创建
+    }
+
+    async function render(filter) {
+      const notes = (await loadNotes()).filter((n) =>
+        !filter || (n.text || '').toLowerCase().includes(filter.toLowerCase()));
+      notes.sort((a, b) => b.at - a.at);
+      tip.textContent = notes.length ? `共 ${notes.length} 张便签 · 点击打开` : (filter ? '没有匹配的便签' : '还没有便签,新建一张贴吧');
+      list.innerHTML = '';
+      if (!notes.length) {
+        const d = document.createElement('div');
+        d.className = 'none';
+        d.textContent = '点击右上角"新建便利贴",在桌面贴一张黄色便签';
+        list.appendChild(d);
+        return;
+      }
+      for (const n of notes) {
+        const row = document.createElement('div');
+        row.className = 'note-row';
+        const pv = document.createElement('div');
+        pv.className = 'preview';
+        const txt = (n.text || '').trim();
+        if (txt) {
+          pv.textContent = txt.slice(0, 120);
+        } else {
+          const e = document.createElement('span');
+          e.className = 'empty';
+          e.textContent = '(空白便签)';
+          pv.appendChild(e);
+        }
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = new Date(n.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const del = document.createElement('button');
+        del.textContent = '🗑';
+        del.title = '删除';
+        del.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await saveNotes((await loadNotes()).filter((x) => x.id !== n.id));
+          render();
+        });
+        row.append(pv, meta, del);
+        row.addEventListener('click', async () => {
+          const r = await ztools.api.openPluginWindow({ width: 300, height: 300, query: n.id });
+          if (!r || r.ok === false) {
+            await ztools.api.notify('便利贴', '便签窗口打开失败:' + ((r && r.error) || '未知错误'));
+          }
+        });
+        list.appendChild(row);
+      }
+    }
+
+    (async () => {
+      await ztools.api.setSubInput('搜索便签内容…');
+      ztools.onSubInput((v) => render(v));
+      render();
+      if (ztools.query.trim() === 'new') createNote(); // "note new" 直接新建
+    })();
+  }
+})();
+</script>
+</body>
+</html>

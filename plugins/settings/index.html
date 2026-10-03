@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置</title>
+<style>
+  body { margin: 0; padding: 18px 24px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  h2 { font-size: 14px; margin: 20px 0 8px; color: #8fb0ff; }
+  h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  .val { color: #b9b9c9; }
+  .tip { color: #6d6d85; font-size: 12px; }
+  input[type=text] { background: #15151c; border: 1px solid #33334a; border-radius: 8px; color: #ececf4; padding: 6px 10px; min-width: 260px; font: inherit; }
+  select { background: #15151c; color: #ececf4; border: 1px solid #33334a; border-radius: 8px; padding: 6px 8px; font: inherit; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  button.primary { background: #4a6dff; color: #fff; }
+  button.primary:hover { background: #5b8cff; }
+  button.recording { background: #a4465e; }
+  .dir { display: flex; align-items: center; gap: 8px; background: #15151c; border: 1px solid #2c2c3a; border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .dir span { flex: 1; word-break: break-all; }
+  .dir button { padding: 2px 10px; }
+  #msg { margin-top: 16px; color: #7ee2a0; min-height: 22px; }
+  label { color: #c9c9d8; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h2>快捷键</h2>
+  <div class="row">
+    <span>当前:<span class="val" id="curHk">—</span></span>
+    <button id="recBtn">录制新快捷键</button>
+    <select id="hkPreset">
+      <option value="">选择常用快捷键…</option>
+      <option value="Alt+Space">Alt+Space(经典)</option>
+      <option value="Ctrl+Space">Ctrl+Space</option>
+      <option value="Alt+Q">Alt+Q</option>
+      <option value="Alt+E">Alt+E</option>
+      <option value="Ctrl+`">Ctrl+`</option>
+    </select>
+    <span class="tip" id="recTip"></span>
+  </div>
+  <div class="row"><span class="tip">Alt+Space 未注册时按它会弹出窗口系统菜单(Windows 保留行为);注册成功后即由 ZTools 接管,不再弹菜单。</span></div>
+
+  <h2>文件搜索目录</h2>
+  <div id="dirs"></div>
+  <div class="row">
+    <input type="text" id="newDir" placeholder="输入目录路径,或点击浏览">
+    <button id="browse">浏览</button>
+    <button id="addDir">添加</button>
+  </div>
+  <div class="row">
+    <button class="primary" id="saveDirs">保存并重建索引</button>
+    <span class="tip">留空则默认索引 桌面 / 文档 / 下载 / 图片 等用户目录</span>
+  </div>
+
+  <h2>搜索引擎</h2>
+  <div class="row">
+    <select id="engine">
+      <option value="bing">必应 Bing</option>
+      <option value="baidu">百度</option>
+      <option value="google">Google</option>
+    </select>
+  </div>
+
+  <h2>行为</h2>
+  <div class="row">
+    <label><input type="checkbox" id="hideOnBlur"> 失去焦点时自动隐藏窗口</label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="autoLaunch"> 开机自动启动 ZTools</label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="notifyEnabled"> 显示插件系统通知(如"已复制")</label>
+  </div>
+
+  <h2>文件索引</h2>
+  <div class="row">
+    <span class="val" id="idxStat">—</span>
+    <button id="rebuild">重建索引</button>
+  </div>
+
+  <h2>插件</h2>
+  <div class="row">
+    <button id="openPlugins">打开用户插件目录</button>
+    <span class="tip">插件是包含 plugin.json 的文件夹,放入后重启生效;内置插件在安装目录 plugins/ 下</span>
+  </div>
+
+  <div id="msg"></div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let S = {};
+  let recording = false;
+
+  const KEY_MAP = { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', ' ': 'Space' };
+
+  function msg(t, bad) {
+    const m = $('#msg');
+    m.textContent = t || '';
+    m.style.color = bad ? '#ff9a9a' : '#7ee2a0';
+  }
+
+  function stText(st) {
+    return st.building ? `索引中… 已 ${st.count} 项` : `已索引 ${st.count} 项`;
+  }
+
+  function renderDirs() {
+    const d = $('#dirs');
+    d.innerHTML = '';
+    (S.searchDirs || []).forEach((p) => {
+      const div = document.createElement('div');
+      div.className = 'dir';
+      const span = document.createElement('span');
+      span.textContent = p;
+      const x = document.createElement('button');
+      x.textContent = '✕';
+      x.addEventListener('click', () => {
+        S.searchDirs = S.searchDirs.filter((v) => v !== p);
+        renderDirs();
+      });
+      div.append(span, x);
+      d.appendChild(div);
+    });
+  }
+
+  $('#hkPreset').addEventListener('change', async () => {
+    const v = $('#hkPreset').value;
+    if (!v) return;
+    const r = await ztools.api.settingsSet({ hotkey: v });
+    if (r && r.ok === false) {
+      msg(r.error, true);
+    } else {
+      $('#curHk').textContent = await ztools.api.getHotkey();
+      msg('快捷键已更新: ' + v);
+    }
+    $('#hkPreset').value = '';
+  });
+
+  $('#recBtn').addEventListener('click', () => {
+    recording = !recording;
+    $('#recBtn').textContent = recording ? '停止录制' : '录制新快捷键';
+    $('#recBtn').classList.toggle('recording', recording);
+    $('#recTip').textContent = recording ? '按下组合键(需含 Ctrl 或 Alt)' : '';
+  });
+
+  document.addEventListener('keydown', async (e) => {
+    if (!recording) return;
+    e.preventDefault();
+    if (e.key === 'Escape') {
+      recording = false;
+      $('#recBtn').textContent = '录制新快捷键';
+      $('#recBtn').classList.remove('recording');
+      $('#recTip').textContent = '';
+      return;
+    }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+    const BLOCKED = ['Enter', 'Escape', 'Tab', 'Backspace', 'Delete', 'ContextMenu'];
+    if (BLOCKED.includes(e.key)) { $('#recTip').textContent = '该按键不适合作为快捷键'; return; }
+    if (!(e.ctrlKey || e.altKey)) { $('#recTip').textContent = '必须包含 Ctrl 或 Alt'; return; }
+    const mod = [];
+    if (e.ctrlKey) mod.push('Ctrl');
+    if (e.altKey) mod.push('Alt');
+    if (e.shiftKey) mod.push('Shift');
+    // 空格/方向键等先查映射表,再处理可打印字符,否则 "Ctrl+ " 会被解析成 "Ctrl+"
+    const k = KEY_MAP[e.key] || (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    const accel = mod.join('+') + '+' + k;
+    const r = await ztools.api.settingsSet({ hotkey: accel });
+    recording = false;
+    $('#recBtn').textContent = '录制新快捷键';
+    $('#recBtn').classList.remove('recording');
+    $('#recTip').textContent = '';
+    if (r && r.ok === false) msg(r.error, true);
+    else {
+      $('#curHk').textContent = await ztools.api.getHotkey();
+      msg('快捷键已更新: ' + accel);
+    }
+  });
+
+  $('#addDir').addEventListener('click', () => {
+    const v = $('#newDir').value.trim();
+    if (v && !(S.searchDirs || []).includes(v)) {
+      (S.searchDirs = S.searchDirs || []).push(v);
+      renderDirs();
+    }
+    $('#newDir').value = '';
+  });
+  $('#browse').addEventListener('click', async () => {
+    const p = await ztools.api.pickFolder();
+    if (p) { (S.searchDirs = S.searchDirs || []).push(p); renderDirs(); }
+  });
+  $('#saveDirs').addEventListener('click', async () => {
+    const r = await ztools.api.settingsSet({ searchDirs: S.searchDirs || [] });
+    msg(r && r.ok === false ? r.error : '已保存,索引重建已开始');
+  });
+  $('#engine').addEventListener('change', () => ztools.api.settingsSet({ engine: $('#engine').value }));
+  $('#hideOnBlur').addEventListener('change', () => ztools.api.settingsSet({ hideOnBlur: $('#hideOnBlur').checked }));
+  $('#notifyEnabled').addEventListener('change', () => ztools.api.settingsSet({ notifyEnabled: $('#notifyEnabled').checked }));
+  $('#autoLaunch').addEventListener('change', async () => {
+    const on = await ztools.api.setAutoLaunch($('#autoLaunch').checked);
+    $('#autoLaunch').checked = !!on;
+    msg(on ? '已开启开机自启' : '已关闭开机自启');
+  });
+  $('#rebuild').addEventListener('click', async () => { await ztools.api.reindex(); msg('索引重建已开始'); });
+  $('#openPlugins').addEventListener('click', () => ztools.api.openPluginsFolder());
+
+  (async () => {
+    S = await ztools.api.settingsGet();
+    $('#curHk').textContent = await ztools.api.getHotkey();
+    renderDirs();
+    $('#engine').value = S.engine || 'bing';
+    $('#hideOnBlur').checked = S.hideOnBlur !== false;
+    $('#autoLaunch').checked = await ztools.api.getAutoLaunch();
+    $('#notifyEnabled').checked = S.notifyEnabled === true;
+    $('#idxStat').textContent = stText(await ztools.api.getIndexStatus());
+    setInterval(async () => {
+      $('#idxStat').textContent = stText(await ztools.api.getIndexStatus());
+    }, 2000);
+  })();
+})();
+</script>
+</body>
+</html>

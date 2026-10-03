@@ -1,0 +1,11 @@
+{
+  "id": "calculator",
+  "displayName": "计算器",
+  "version": "1.0.0",
+  "description": "快速计算数学表达式",
+  "main": "index.html",
+  "icon": "🧮",
+  "commands": [
+    { "word": "calc", "description": "计算表达式,如 calc (1+2)*3 或 calc sqrt(2)" }
+  ]
+}

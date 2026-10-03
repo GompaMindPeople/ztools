@@ -1,0 +1,11 @@
+{
+  "id": "settings",
+  "displayName": "设置",
+  "version": "1.0.0",
+  "description": "快捷键、索引目录、搜索引擎等设置",
+  "main": "index.html",
+  "icon": "⚙️",
+  "commands": [
+    { "word": "set", "description": "打开 ZTools 设置" }
+  ]
+}

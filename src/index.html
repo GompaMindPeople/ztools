@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+<title>ZTools</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header id="bar">
+    <div id="logoWrap">
+      <div id="logo" title="管理菜单">Z</div>
+      <div id="zMenu" class="hidden">
+        <div class="z-item" data-plugin="settings">⚙️ 设置</div>
+        <div class="z-item" data-plugin="plugin-manager">🧩 插件管理</div>
+        <div class="z-item" data-plugin="notes">📝 便利贴</div>
+        <div class="z-sep"></div>
+        <div class="z-item" id="zPin">📌 置顶面板</div>
+      </div>
+    </div>
+    <input id="query" placeholder="搜索应用、文件,或输入插件命令…" spellcheck="false" autocomplete="off">
+    <span id="pinBadge" class="hidden" title="面板已置顶(右键可取消)">📌</span>
+    <button id="closeBtn" title="隐藏 (Esc)">✕</button>
+  </header>
+
+  <div id="subbar" class="hidden">
+    <span class="sic">›</span>
+    <input id="subInput" spellcheck="false" autocomplete="off">
+  </div>
+
+  <main id="results"></main>
+
+  <div id="empty" style="display:none">
+    <div class="hero">
+      <div class="hero-title">ZTools 快速启动器</div>
+      <div class="hero-sub">输入关键词搜索应用与文件 · 输入插件命令码进入插件 · <kbd>Alt+Space</kbd> 随时唤醒</div>
+    </div>
+    <div class="group-h">插件</div>
+    <div id="chips" class="chips"></div>
+    <div id="recentWrap">
+      <div class="group-h">最近使用</div>
+      <div id="recentList"></div>
+    </div>
+  </div>
+
+  <webview id="pluginView" style="display:none"></webview>
+
+  <footer>
+    <span id="footerHint"><kbd>↑↓</kbd> 选择 <kbd>Enter</kbd> 执行 <kbd>Ctrl+Enter</kbd> 打开所在位置 <kbd>Tab</kbd> 补全 <kbd>Esc</kbd> 隐藏</span>
+    <span id="indexStatus"></span>
+  </footer>
+
+  <div id="toast"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

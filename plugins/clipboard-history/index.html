@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>剪贴板历史</title>
+<style>
+  body { margin: 0; padding: 18px 22px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .head .tip { color: #8f8fa3; font-size: 12px; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 5px 12px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  .list { display: flex; flex-direction: column; gap: 4px; }
+  .row { display: flex; align-items: center; gap: 10px; background: #15151c; border: 1px solid #2c2c3a; border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+  .row:hover { border-color: #5b8cff; }
+  .thumb { height: 44px; max-width: 120px; border-radius: 6px; display: block; flex: none; }
+  .txt { flex: 1; min-width: 0; white-space: pre-wrap; max-height: 58px; overflow: hidden; font-size: 13px; color: #d6d6e2; word-break: break-all; }
+  .img-tag { flex: 1; min-width: 0; font-size: 13px; color: #8fb0ff; }
+  .img-tag small { color: #6d6d85; margin-left: 6px; }
+  .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+  .ago { color: #6d6d85; font-size: 11px; white-space: nowrap; }
+  .acts { display: flex; gap: 4px; }
+  .del { background: none; color: #6d6d85; padding: 2px 6px; font-size: 12px; }
+  .del:hover { color: #ff9a9a; background: none; }
+  .eye { background: none; color: #6d6d85; padding: 2px 6px; font-size: 12px; }
+  .eye:hover { color: #8fb0ff; background: none; }
+  .none { color: #6d6d85; padding: 30px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <span class="tip" id="tip">点击条目复制 · Enter 复制第一条</span>
+    <button id="clear">清空历史</button>
+  </div>
+  <div class="list" id="list"></div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let items = [];
+  let filter = '';
+
+  function ago(t) {
+    const s = (Date.now() - t) / 1000;
+    if (s < 60) return '刚刚';
+    if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+    if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
+    return Math.floor(s / 86400) + ' 天前';
+  }
+
+  function filtered() {
+    if (!filter) return items;
+    const f = filter.toLowerCase();
+    return items.filter((i) => i.type === 'text' && i.text.toLowerCase().includes(f));
+  }
+
+  function render() {
+    const list = $('#list');
+    list.innerHTML = '';
+    const rows = filtered();
+    const imgCount = items.filter((i) => i.type === 'image').length;
+    $('#tip').textContent = rows.length
+      ? `共 ${items.length} 条(图片 ${imgCount}) · 点击复制 · Enter 复制第一条`
+      : '暂无记录,复制一些内容后再来';
+    if (!rows.length) {
+      const d = document.createElement('div');
+      d.className = 'none';
+      d.textContent = items.length ? '没有匹配的记录(不匹配图片)' : '暂无剪贴板历史';
+      list.appendChild(d);
+      return;
+    }
+    rows.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+
+      if (it.type === 'image') {
+        const img = document.createElement('img');
+        img.className = 'thumb';
+        img.src = it.thumb;
+        const tag = document.createElement('div');
+        tag.className = 'img-tag';
+        tag.textContent = '🖼 图片';
+        const sz = document.createElement('small');
+        sz.textContent = it.w + '×' + it.h;
+        tag.appendChild(sz);
+        row.append(img, tag);
+      } else {
+        const txt = document.createElement('div');
+        txt.className = 'txt';
+        txt.textContent = it.text;
+        row.appendChild(txt);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const time = document.createElement('span');
+      time.className = 'ago';
+      time.textContent = ago(it.at);
+      const acts = document.createElement('div');
+      acts.className = 'acts';
+      if (it.type === 'image') {
+        const eye = document.createElement('button');
+        eye.className = 'eye';
+        eye.title = '置顶预览大图';
+        eye.textContent = '👁';
+        eye.addEventListener('click', (e) => { e.stopPropagation(); preview(it); });
+        acts.appendChild(eye);
+      }
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.title = '删除该条';
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await ztools.api.clipboardRemove(it.id);
+        refresh();
+      });
+      acts.appendChild(del);
+      meta.append(time, acts);
+
+      row.appendChild(meta);
+      row.addEventListener('click', () => reuse(it));
+      list.appendChild(row);
+    });
+  }
+
+  async function reuse(it) {
+    if (it.type === 'image') {
+      await ztools.api.clipboardWriteImage(it.id);
+    } else {
+      await ztools.api.clipboardWrite(it.text);
+    }
+    await ztools.api.hideMainWindow();
+  }
+
+  async function preview(it) {
+    const img = await ztools.api.clipboardGetImage(it.id);
+    if (!img) return;
+    await ztools.api.pinToTop({
+      title: '剪贴板图片',
+      width: img.width + 16,
+      height: img.height + 16,
+      html: `<div style="padding:8px"><img src="${img.dataUrl}" style="max-width:100%;display:block"></div>`
+    });
+  }
+
+  async function refresh() {
+    items = await ztools.api.clipboardList();
+    render();
+  }
+
+  ztools.onSubInput((v) => { filter = v; render(); });
+  ztools.onSubEnter(() => { const r = filtered()[0]; if (r) reuse(r); });
+  $('#clear').addEventListener('click', async () => { await ztools.api.clipboardClear(); refresh(); });
+
+  (async () => {
+    await ztools.api.setSubInput('搜索剪贴板文本历史…');
+    refresh();
+  })();
+})();
+</script>
+</body>
+</html>

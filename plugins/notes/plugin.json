@@ -1,0 +1,11 @@
+{
+  "id": "notes",
+  "displayName": "便利贴",
+  "version": "1.0.0",
+  "description": "在桌面任意位置贴便签,每个便签独立置顶小窗",
+  "main": "index.html",
+  "icon": "📝",
+  "commands": [
+    { "word": "note", "description": "便利贴:查看/新建桌面便签" }
+  ]
+}

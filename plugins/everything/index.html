@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Everything</title>
+<style>
+  body { margin: 0; padding: 16px 20px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .status { color: #8f8fa3; font-size: 12px; }
+  .status.err { color: #ff9a9a; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 5px 12px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  .settings { background: #15151c; border: 1px solid #2c2c3a; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+  .settings .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .settings label { color: #9a9ab0; font-size: 12px; min-width: 56px; }
+  .settings input { background: #101018; border: 1px solid #33334a; border-radius: 6px; color: #ececf4; padding: 4px 8px; font: inherit; width: 130px; }
+  .settings input#password { width: 130px; }
+  .tip { color: #6d6d85; font-size: 11px; margin-top: 4px; }
+  .list { display: flex; flex-direction: column; gap: 3px; }
+  .item { display: flex; align-items: center; gap: 10px; background: #15151c; border: 1px solid #2c2c3a; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .item:hover { border-color: #5b8cff; }
+  .ic { flex: none; font-size: 15px; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .path { font-size: 11px; color: #6d6d85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { flex: none; text-align: right; font-size: 11px; color: #8f8fa3; }
+  .size { color: #8fb0ff; }
+  .folder-btn { background: none; color: #6d6d85; padding: 2px 8px; font-size: 12px; flex: none; }
+  .folder-btn:hover { color: #8fb0ff; background: none; }
+  .hint { padding: 24px; text-align: center; color: #6d6d85; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span class="status" id="status">在上方子输入框输入关键词开始搜索</span>
+    <button id="toggleSettings">连接设置</button>
+  </div>
+
+  <div class="settings" id="settings" style="display:none">
+    <div class="row">
+      <label>端口</label>
+      <input id="port" type="number" placeholder="2145">
+      <label>认证</label>
+      <input id="username" placeholder="用户名(可选)">
+      <input id="password" type="password" placeholder="密码(可选)">
+      <button id="save">保存</button>
+    </div>
+    <div class="tip">前置条件:Everything → 工具 → 选项 → HTTP 服务器 → 启用 HTTP 服务器(默认端口 2145);若设置了用户名密码,请在此填写。</div>
+  </div>
+
+  <div class="list" id="list"></div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let port = 2145;
+  let auth = '';
+  let timer = 0;
+  let seq = 0;
+  let lastQuery = '';
+
+  function fmtSize(n) {
+    if (n == null || isNaN(n)) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 ** 2) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(1) + ' MB';
+    return (n / 1024 ** 3).toFixed(2) + ' GB';
+  }
+
+  function fmtTime(ft) {
+    if (!ft || ft < 0) return '';
+    const d = new Date(ft / 10000 - 11644473600000); // FILETIME → Unix ms
+    if (isNaN(d.getTime())) return '';
+    const pad = (x) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function setStatus(text, err) {
+    const el = $('#status');
+    el.textContent = text;
+    el.className = 'status' + (err ? ' err' : '');
+  }
+
+  function render(data) {
+    const list = $('#list');
+    list.innerHTML = '';
+    if (!data.results.length) {
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = '没有匹配的结果';
+      list.appendChild(d);
+      return;
+    }
+    for (const r of data.results) {
+      const full = (r.path || '') + (r.name || '');
+      const item = document.createElement('div');
+      item.className = 'item';
+
+      const ic = document.createElement('span');
+      ic.className = 'ic';
+      ic.textContent = r.type === 'folder' ? '📁' : '📄';
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = r.name || full;
+      const path = document.createElement('div');
+      path.className = 'path';
+      path.textContent = r.path || '';
+      info.append(name, path);
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const size = document.createElement('div');
+      size.className = 'size';
+      size.textContent = r.type === 'folder' ? '' : fmtSize(r.size);
+      const dm = document.createElement('div');
+      dm.textContent = fmtTime(r.dm);
+      meta.append(size, dm);
+
+      const folderBtn = document.createElement('button');
+      folderBtn.className = 'folder-btn';
+      folderBtn.title = '打开所在文件夹';
+      folderBtn.textContent = '📂';
+      folderBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ztools.api.showItemInFolder(full);
+      });
+
+      item.append(ic, info, meta, folderBtn);
+      item.addEventListener('click', () => ztools.api.openPath(full));
+      list.appendChild(item);
+    }
+  }
+
+  async function search(q) {
+    const mySeq = ++seq;
+    lastQuery = q;
+    setStatus(`搜索 “${q}” …`);
+    const r = await ztools.api.everythingSearch(q, port, auth);
+    if (mySeq !== seq) return; // 已被更新的搜索取代
+    if (!r || r.ok === false) {
+      setStatus(r ? r.error : '搜索失败', true);
+      $('#list').innerHTML = '';
+      return;
+    }
+    const shown = `共 ${r.total} 条,显示前 ${r.results.length} 条 · 点击打开 · 📂 打开所在位置`;
+    setStatus(shown);
+    render(r);
+  }
+
+  ztools.onSubInput((v) => {
+    clearTimeout(timer);
+    if (!v.trim()) { setStatus('在上方子输入框输入关键词开始搜索'); $('#list').innerHTML = ''; return; }
+    timer = setTimeout(() => search(v.trim()), 250);
+  });
+  ztools.onSubEnter(() => {
+    const first = document.querySelector('.item');
+    if (first) first.click();
+  });
+
+  $('#toggleSettings').addEventListener('click', () => {
+    const s = $('#settings');
+    s.style.display = s.style.display === 'none' ? '' : 'none';
+  });
+  $('#save').addEventListener('click', async () => {
+    port = Number($('#port').value) || 2145;
+    const u = $('#username').value.trim();
+    const p = $('#password').value;
+    auth = u || p ? u + ':' + p : '';
+    await ztools.api.dbSet('conn', { port, auth });
+    setStatus('已保存连接设置(端口 ' + port + ')', false);
+  });
+
+  // 引擎接入策略:官方版(2145)优先;否则自动安装并启动内置便携版(2146)
+  async function connectEngine() {
+    setStatus('检测 Everything 引擎…');
+    const st = await ztools.api.everythingStatus();
+    if (st.official) {
+      port = 2145;
+      setStatus('已连接官方 Everything(:2145)');
+      return true;
+    }
+    if (st.bundled) {
+      port = 2146;
+      setStatus('已连接内置引擎(:2146)');
+      return true;
+    }
+    if (!st.bundledInstalled) {
+      setStatus('首次使用:下载内置引擎便携版(~1.9MB,视网络约 10-60 秒)…');
+      const setup = await ztools.api.everythingSetup();
+      if (!setup || setup.ok === false) {
+        setStatus((setup && setup.error) || '内置引擎安装失败', true);
+        return false;
+      }
+    }
+    setStatus('启动内置引擎(首次运行需建立全盘索引,约 1-2 分钟,仅此一次)…');
+    const start = await ztools.api.everythingStart();
+    if (start && start.ok) {
+      port = 2146;
+      setStatus('内置引擎就绪(:2146)');
+      return true;
+    }
+    setStatus((start && start.error) || '引擎启动失败', true);
+    // 索引仍在后台建立:轮询探测,就绪后自动执行最近的查询
+    if (start && start.error && start.error.includes('索引')) {
+      const t = setInterval(async () => {
+        const st = await ztools.api.everythingStatus();
+        if (st.bundled || st.official) {
+          clearInterval(t);
+          port = st.official ? 2145 : 2146;
+          setStatus('内置引擎就绪(:2146)');
+          if (lastQuery) search(lastQuery);
+        }
+      }, 5000);
+    }
+    return false;
+  }
+
+  (async () => {
+    await ztools.api.setSubInput('输入关键词,全盘搜索…');
+    const conn = await ztools.api.dbGet('conn');
+    if (conn) {
+      port = conn.port || 2145;
+      auth = conn.auth || '';
+      $('#port').value = port;
+      if (auth) {
+        const [u] = auth.split(':');
+        $('#username').value = u || '';
+      }
+    } else {
+      $('#port').value = 2145;
+    }
+    const ready = await connectEngine();
+    if (ready && ztools.query.trim()) search(ztools.query.trim());
+  })();
+})();
+</script>
+</body>
+</html>

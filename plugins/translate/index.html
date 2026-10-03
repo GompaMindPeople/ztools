@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>翻译</title>
+<style>
+  body { margin: 0; padding: 20px 24px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .src { background: #15151c; border: 1px solid #2c2c3a; border-radius: 12px; padding: 10px 14px; color: #9a9ab0; font-size: 13px; white-space: pre-wrap; word-break: break-all; min-height: 22px; max-height: 110px; overflow: auto; }
+  .arrow { color: #5d5d75; text-align: center; margin: 8px 0; font-size: 13px; }
+  .dst { background: rgba(91, 140, 255, 0.08); border: 1px solid #32406e; border-radius: 12px; padding: 14px 16px; font-size: 19px; font-weight: 600; white-space: pre-wrap; word-break: break-all; min-height: 52px; }
+  .dst.err { border-color: #6e3232; color: #ff9a9a; font-size: 14px; font-weight: 400; }
+  .meta { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .engine { color: #6d6d85; font-size: 12px; }
+  .acts { display: flex; gap: 8px; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  button.primary { background: #4a6dff; color: #fff; }
+  .tip { color: #6d6d85; font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <div class="src" id="src">(在上方子输入框输入要翻译的内容)</div>
+  <div class="arrow">▼ 自动检测方向</div>
+  <div class="dst" id="dst">—</div>
+  <div class="meta">
+    <span class="engine" id="engine"></span>
+    <div class="acts">
+      <button id="copy">复制译文</button>
+      <button id="retry">重新翻译</button>
+      <button class="primary" id="swap">翻译剪贴板</button>
+    </div>
+  </div>
+  <div class="tip">中文自动译英文,英文自动译中文;子输入框回车 = 翻译并复制</div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let current = '';
+
+  async function doTranslate(text) {
+    text = String(text || '').trim();
+    if (!text) return;
+    current = text;
+    $('#src').textContent = text;
+    $('#dst').textContent = '翻译中…';
+    $('#dst').className = 'dst';
+    $('#engine').textContent = '';
+    const r = await ztools.api.translateText(text);
+    if (!r || r.ok === false) {
+      $('#dst').textContent = (r && r.error) || '翻译失败';
+      $('#dst').className = 'dst err';
+      return;
+    }
+    $('#dst').textContent = r.text;
+    $('#engine').textContent = `${r.direction} · ${r.engine}`;
+  }
+
+  ztools.onSubInput((v) => { if (v.trim()) doTranslate(v); });
+  ztools.onSubEnter(async () => {
+    if ($('#dst').textContent && $('#dst').className.indexOf('err') === -1) {
+      await ztools.api.copy($('#dst').textContent);
+      await ztools.api.hideMainWindow();
+    }
+  });
+
+  $('#copy').addEventListener('click', async () => {
+    const t = $('#dst').textContent;
+    if (t && t !== '—') { await ztools.api.copy(t); $('#engine').textContent = '已复制'; }
+  });
+  $('#retry').addEventListener('click', () => doTranslate(current));
+  $('#swap').addEventListener('click', async () => {
+    const t = await ztools.api.readClipboardText();
+    if (t && t.trim()) doTranslate(t);
+  });
+
+  (async () => {
+    await ztools.api.setSubInput('输入要翻译的中/英文…');
+    if (ztools.query.trim()) doTranslate(ztools.query.trim());
+  })();
+})();
+</script>
+</body>
+</html>

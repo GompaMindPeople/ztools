@@ -1,0 +1,11 @@
+{
+  "id": "plugin-manager",
+  "displayName": "插件管理",
+  "version": "1.0.0",
+  "description": "查看、启停插件,打开插件目录",
+  "main": "index.html",
+  "icon": "🧩",
+  "commands": [
+    { "word": "plugins", "description": "管理已安装的插件" }
+  ]
+}

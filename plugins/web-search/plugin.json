@@ -1,0 +1,11 @@
+{
+  "id": "web-search",
+  "displayName": "网页搜索",
+  "version": "1.0.0",
+  "description": "使用默认搜索引擎在浏览器中搜索",
+  "main": "index.html",
+  "icon": "🔍",
+  "commands": [
+    { "word": "s", "description": "搜索网页,如 s electron 教程" }
+  ]
+}

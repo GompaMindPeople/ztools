@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>时间戳转换</title>
+<style>
+  body { margin: 0; padding: 20px 24px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .sec-h { font-size: 11px; letter-spacing: .12em; color: #6d6d85; margin: 14px 0 8px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; }
+  .card { background: #15151c; border: 1px solid #2c2c3a; border-radius: 12px; padding: 10px 16px; cursor: pointer; min-width: 180px; }
+  .card:hover { border-color: #5b8cff; }
+  .card .k { color: #8f8fa3; font-size: 12px; }
+  .card .v { color: #fff; font-size: 16px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .tip { color: #6d6d85; font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <div class="sec-h" id="title">当前时间</div>
+  <div class="cards" id="cards"></div>
+  <div class="tip">在上方子输入框输入时间戳(10/13 位)或日期(如 2026-10-03 12:00)进行转换 · 点击卡片复制</div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let input = '';
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const fmtMs = (d) => d.getTime().toString().replace(/\d{3}$/, '.$&');
+
+  function parseInput(v) {
+    const s = String(v || '').trim();
+    if (!s) return null;
+    if (/^\d{13}$/.test(s)) return new Date(Number(s));
+    if (/^\d{10}$/.test(s)) return new Date(Number(s) * 1000);
+    if (/^\d{16,}$/.test(s)) return new Date(Number(s.slice(0, 13)));
+    let t = Date.parse(s);
+    if (!Number.isNaN(t)) return new Date(t);
+    t = Date.parse(s.replace(/(\d{4}-\d{1,2}-\d{1,2})[ T](\d{1,2}:\d{2})(:\d{2})?/, '$1T$2$3'));
+    if (!Number.isNaN(t)) return new Date(t);
+    return null;
+  }
+
+  function cardsFor(d) {
+    return [
+      { k: 'Unix 秒', v: String(Math.floor(d.getTime() / 1000)) },
+      { k: 'Unix 毫秒', v: String(d.getTime()) },
+      { k: '本地时间', v: fmtLocal(d) },
+      { k: 'ISO 8601', v: d.toISOString() }
+    ];
+  }
+
+  function render() {
+    let d, title;
+    if (input) {
+      d = parseInput(input);
+      title = '转换结果';
+      if (!d) {
+        $('#title').textContent = '无法识别的输入';
+        $('#cards').innerHTML = '';
+        return;
+      }
+    } else {
+      d = new Date();
+      title = '当前时间';
+    }
+    $('#title').textContent = title;
+    const wrap = $('#cards');
+    wrap.innerHTML = '';
+    cardsFor(d).forEach((c) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const k = document.createElement('div'); k.className = 'k'; k.textContent = c.k;
+      const v = document.createElement('div'); v.className = 'v'; v.textContent = c.v;
+      card.append(k, v);
+      card.addEventListener('click', async () => {
+        await ztools.api.copy(c.v);
+        await ztools.api.notify('时间戳转换', '已复制 ' + c.v);
+      });
+      wrap.appendChild(card);
+    });
+  }
+
+  ztools.onSubInput((v) => { input = v; render(); });
+  ztools.onSubEnter(async () => {
+    const d = input ? parseInput(input) : new Date();
+    if (d) {
+      const v = String(Math.floor(d.getTime() / 1000));
+      await ztools.api.copy(v);
+      await ztools.api.notify('时间戳转换', '已复制 ' + v);
+    }
+  });
+
+  setInterval(() => { if (!input) render(); }, 1000);
+  (async () => {
+    await ztools.api.setSubInput('输入时间戳或日期,留空显示当前时间');
+    if (ztools.query) { input = ztools.query; }
+    render();
+  })();
+})();
+</script>
+</body>
+</html>

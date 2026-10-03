@@ -1,0 +1,16 @@
+{
+  "name": "ztools-launcher",
+  "version": "0.1.0",
+  "description": "ZTools —— 类 uTools 的效率启动器:全局热键唤醒、应用/文件快速检索、插件平台",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke-test",
+    "test": "node test/core.test.js",
+    "gen:icon": "node scripts/gen-icon.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

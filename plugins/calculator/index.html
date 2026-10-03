@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>计算器</title>
+<style>
+  body { margin: 0; padding: 24px 28px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .expr { color: #8f8fa3; font-size: 15px; min-height: 24px; word-break: break-all; }
+  .res { font-size: 34px; font-weight: 700; margin: 8px 0 4px; word-break: break-all; }
+  .err { color: #ff9a9a; min-height: 22px; }
+  .funcs { margin-top: 14px; color: #6d6d85; font-size: 12px; }
+  .hist { margin-top: 18px; }
+  .hist-h { font-size: 11px; letter-spacing: .12em; color: #6d6d85; margin-bottom: 4px; }
+  .h-row { display: flex; justify-content: space-between; gap: 16px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+  .h-row:hover { background: #242433; }
+  .h-e { color: #b9b9c9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .h-v { color: #8fb0ff; font-weight: 600; white-space: nowrap; }
+</style>
+</head>
+<body>
+  <div class="expr" id="expr">输入表达式,如 (1+2)*3、sqrt(2)、2^10、max(1,5,3)</div>
+  <div class="res" id="res">—</div>
+  <div class="err" id="err"></div>
+  <div class="funcs">运算符 + − * / % ^ ( ) · 函数 sqrt cbrt ln log log2 abs round floor ceil sin cos tan exp min max pow · 常量 pi e · 回车复制结果</div>
+  <div class="hist" id="histWrap" style="display:none">
+    <div class="hist-h">历史(点击复制)</div>
+    <div id="hist"></div>
+  </div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let current = null;
+  const hist = [];
+
+  function fmt(v) { return String(parseFloat(Number(v).toPrecision(12))); }
+
+  async function calc(expr) {
+    const e = String(expr || '').trim();
+    if (!e) { current = null; render(); return; }
+    const r = await ztools.api.evalMath(e);
+    if (r && r.ok) current = { expr: e, value: fmt(r.value) };
+    else current = null;
+    render(r && r.ok ? null : (r && r.error) || '表达式无效');
+  }
+
+  function render(errMsg) {
+    $('#expr').textContent = current ? current.expr : '输入表达式,如 (1+2)*3、sqrt(2)、2^10、max(1,5,3)';
+    $('#res').textContent = current ? '= ' + current.value : '—';
+    $('#err').textContent = errMsg || '';
+    const w = $('#histWrap');
+    const h = $('#hist');
+    h.innerHTML = '';
+    if (!hist.length) { w.style.display = 'none'; return; }
+    w.style.display = '';
+    hist.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'h-row';
+      const e = document.createElement('span'); e.className = 'h-e'; e.textContent = it.expr;
+      const v = document.createElement('span'); v.className = 'h-v'; v.textContent = it.value;
+      row.append(e, v);
+      row.addEventListener('click', () => copy(it.value));
+      h.appendChild(row);
+    });
+  }
+
+  async function copy(value) {
+    await ztools.api.copy(value);
+    await ztools.api.notify('计算器', '已复制 ' + value);
+  }
+
+  ztools.onSubInput((v) => calc(v));
+  ztools.onSubEnter(async () => {
+    if (!current) return;
+    await copy(current.value);
+    hist.unshift(current);
+    if (hist.length > 8) hist.length = 8;
+    render();
+  });
+
+  (async () => {
+    await ztools.api.setSubInput('输入表达式,如 (1+2)*3 或 sqrt(2)');
+    if (ztools.query) calc(ztools.query);
+  })();
+})();
+</script>
+</body>
+</html>

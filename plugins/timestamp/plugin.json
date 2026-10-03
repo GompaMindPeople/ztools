@@ -1,0 +1,11 @@
+{
+  "id": "timestamp",
+  "displayName": "时间戳转换",
+  "version": "1.0.0",
+  "description": "当前时间与时间戳 / 日期互转",
+  "main": "index.html",
+  "icon": "⏱️",
+  "commands": [
+    { "word": "ts", "description": "时间戳与日期互转,如 ts 1730000000" }
+  ]
+}

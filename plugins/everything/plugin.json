@@ -1,0 +1,11 @@
+{
+  "id": "everything",
+  "displayName": "Everything",
+  "version": "1.0.0",
+  "description": "用 Everything 全盘秒搜文件(需在其选项中开启 HTTP 服务器)",
+  "main": "index.html",
+  "icon": "🔎",
+  "commands": [
+    { "word": "es", "description": "全盘搜索,如 es 配置 json" }
+  ]
+}

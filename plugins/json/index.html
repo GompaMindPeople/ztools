@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>JSON 工具</title>
+<style>
+  body { margin: 0; padding: 14px 18px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+  .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  button.primary { background: #4a6dff; color: #fff; }
+  .status { font-size: 12px; margin: 0 0 8px 2px; color: #9a9ab0; min-height: 18px; }
+  .status.ok { color: #7ee2a0; }
+  .status.err { color: #ff9a9a; }
+  textarea { flex: 1; width: 100%; box-sizing: border-box; background: #15151c; color: #d6d6e2; border: 1px solid #2c2c3a; border-radius: 10px; padding: 10px 12px; font: 13px/1.5 Consolas, "Courier New", monospace; resize: none; outline: none; white-space: pre; overflow: auto; }
+  textarea:focus { border-color: #4a6dff; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button class="primary" id="fmt">格式化</button>
+    <button id="min">压缩</button>
+    <button id="check">校验</button>
+    <button id="escapeBtn">转义</button>
+    <button id="unescapeBtn">去转义</button>
+    <button id="copy">复制结果</button>
+    <button id="paste">读取剪贴板</button>
+  </div>
+  <div class="status" id="status">粘贴或输入 JSON,或直接读取剪贴板</div>
+  <textarea id="ta" spellcheck="false" placeholder='{"name": "ztools", "version": 1}'></textarea>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const ta = $('#ta');
+  const st = $('#status');
+
+  function setStatus(text, cls) {
+    st.textContent = text;
+    st.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  // 解析并给出错误行列定位
+  function parseDetail(text) {
+    try {
+      return { ok: true, value: JSON.parse(text) };
+    } catch (e) {
+      const m = /position (\d+)/.exec(e.message || '');
+      let where = '';
+      if (m) {
+        const p = Number(m[1]);
+        const before = text.slice(0, p);
+        const line = before.split('\n').length;
+        const col = p - before.lastIndexOf('\n');
+        where = `(第 ${line} 行第 ${col} 列附近)`;
+      }
+      return { ok: false, error: (e.message || String(e)) + where };
+    }
+  }
+
+  function describe(v) {
+    if (Array.isArray(v)) return `数组,${v.length} 项`;
+    if (v && typeof v === 'object') return `对象,${Object.keys(v).length} 个键`;
+    return typeof v;
+  }
+
+  function fmt() {
+    const r = parseDetail(ta.value);
+    if (!r.ok) return setStatus('✗ ' + r.error, 'err');
+    ta.value = JSON.stringify(r.value, null, 2);
+    setStatus(`✓ 合法 JSON(${describe(r.value)}),已格式化,${ta.value.length} 字符`, 'ok');
+  }
+
+  function minify() {
+    const r = parseDetail(ta.value);
+    if (!r.ok) return setStatus('✗ ' + r.error, 'err');
+    ta.value = JSON.stringify(r.value);
+    setStatus(`✓ 已压缩,${ta.value.length} 字符`, 'ok');
+  }
+
+  function check() {
+    const r = parseDetail(ta.value);
+    if (!r.ok) return setStatus('✗ ' + r.error, 'err');
+    setStatus(`✓ 合法 JSON(${describe(r.value)}),${ta.value.length} 字符`, 'ok');
+  }
+
+  function escapeText() {
+    if (!ta.value) return;
+    ta.value = JSON.stringify(ta.value);
+    setStatus('✓ 已转义为字符串字面量', 'ok');
+  }
+
+  function unescapeText() {
+    const r = parseDetail(ta.value);
+    if (!r.ok || typeof r.value !== 'string') return setStatus('✗ 内容不是带引号的 JSON 字符串', 'err');
+    ta.value = r.value;
+    setStatus('✓ 已去转义', 'ok');
+  }
+
+  $('#fmt').addEventListener('click', fmt);
+  $('#min').addEventListener('click', minify);
+  $('#check').addEventListener('click', check);
+  $('#escapeBtn').addEventListener('click', escapeText);
+  $('#unescapeBtn').addEventListener('click', unescapeText);
+  $('#copy').addEventListener('click', async () => {
+    if (!ta.value) return;
+    await ztools.api.copy(ta.value);
+    setStatus('已复制到剪贴板', 'ok');
+  });
+  $('#paste').addEventListener('click', loadFromClipboard);
+
+  async function loadFromClipboard() {
+    const t = await ztools.api.readClipboardText();
+    if (!t || !t.trim()) return setStatus('剪贴板中没有文本', 'err');
+    ta.value = t.trim();
+    fmt(); // 读入后自动格式化,顺带校验
+  }
+
+  (async () => {
+    await ztools.api.setSubInput('提示:主输入 json 后可接内容,或点“读取剪贴板”');
+    if (ztools.query.trim()) {
+      ta.value = ztools.query.trim();
+      fmt();
+    } else {
+      loadFromClipboard(); // 打开即读剪贴板(无文本则保持提示)
+    }
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "id": "clipboard-history",
+  "displayName": "剪贴板历史",
+  "version": "1.0.0",
+  "description": "查看并复用剪贴板历史记录",
+  "main": "index.html",
+  "icon": "📋",
+  "commands": [
+    { "word": "cb", "description": "搜索并复用剪贴板历史" }
+  ]
+}

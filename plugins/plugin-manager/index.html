@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>插件管理</title>
+<style>
+  body { margin: 0; padding: 18px 22px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .head .tip { color: #8f8fa3; font-size: 12px; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  .row { display: flex; align-items: center; gap: 12px; background: #15151c; border: 1px solid #2c2c3a; border-radius: 12px; padding: 10px 14px; margin: 8px 0; }
+  .row.off { opacity: 0.55; }
+  .ic { font-size: 24px; flex: none; width: 32px; text-align: center; }
+  .info { flex: 1; min-width: 0; }
+  .nm { font-size: 14px; font-weight: 600; }
+  .ver { color: #6d6d85; font-size: 11px; margin-left: 6px; font-weight: 400; }
+  .ds { color: #9a9ab0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .path { color: #5d5d75; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmds { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+  .cmd { background: #242433; border-radius: 6px; padding: 1px 8px; font-size: 11px; color: #8fb0ff; }
+  .hk { flex: none; display: flex; align-items: center; }
+  .hkbtn { min-width: 64px; padding: 5px 10px; font-size: 12px; background: #242433; color: #b9b9c9; }
+  .hkbtn:hover { background: #31314a; }
+  .hkbtn.rec { background: #a4465e; color: #fff; }
+  .hkbtn.set { color: #8fb0ff; border: 1px solid #32406e; }
+  .src { flex: none; font-size: 11px; color: #6d6d85; border: 1px solid #2c2c3a; border-radius: 6px; padding: 1px 8px; }
+  .switch { flex: none; position: relative; width: 40px; height: 22px; }
+  .switch input { display: none; }
+  .slider { position: absolute; inset: 0; background: #3a3a52; border-radius: 11px; cursor: pointer; transition: 0.15s; }
+  .slider::before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #b9b9c9; top: 3px; left: 3px; transition: 0.15s; }
+  .switch input:checked + .slider { background: #4a6dff; }
+  .switch input:checked + .slider::before { transform: translateX(18px); background: #fff; }
+  .switch input:disabled + .slider { opacity: 0.4; cursor: not-allowed; }
+  .msg { margin-top: 12px; color: #7ee2a0; min-height: 20px; font-size: 13px; }
+  .errs { margin-top: 14px; }
+  .errs h3 { font-size: 13px; color: #ff9a9a; margin-bottom: 6px; }
+  .err-item { background: rgba(255, 100, 100, 0.08); border: 1px solid rgba(255, 100, 100, 0.25); border-radius: 8px; padding: 6px 10px; margin: 6px 0; font-size: 12px; color: #ffb3b3; word-break: break-all; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <span class="tip" id="tip">加载中…</span>
+    <div style="display:flex;gap:8px">
+      <button id="refresh">刷新</button>
+      <button id="openDir">打开用户插件目录</button>
+    </div>
+  </div>
+  <div id="list"></div>
+  <div class="errs" id="errs" style="display:none">
+    <h3>加载失败的插件</h3>
+    <div id="errList"></div>
+  </div>
+  <div class="msg" id="msg"></div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let plugins = [];
+  let recording = null; // 正在录制热键的 { id, btn }
+  const KEY_MAP = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right' };
+
+  function msg(t, bad) {
+    const m = $('#msg');
+    m.textContent = t || '';
+    m.style.color = bad ? '#ff9a9a' : '#7ee2a0';
+  }
+
+  function stopRecord() {
+    if (recording) {
+      recording.btn.classList.remove('rec');
+      recording = null;
+      load();
+    }
+  }
+
+  async function applyHotkey(id, accel) {
+    const r = await ztools.api.pluginsSetHotkey(id, accel);
+    if (r && r.ok === false) {
+      msg(r.error, true);
+    } else {
+      msg(accel ? `热键已设置:${accel}` : '热键已清除');
+    }
+    stopRecord();
+  }
+
+  function startRecord(p, btn) {
+    if (recording) stopRecord();
+    recording = { id: p.id, btn };
+    btn.classList.add('rec');
+    btn.textContent = '按键…';
+    msg('按下一个键作为热键(F1-F12 或方向键;组合键需含 Ctrl/Alt)。Esc 取消,Backspace 清除');
+  }
+
+  document.addEventListener('keydown', async (e) => {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') { msg(''); stopRecord(); return; }
+    if (e.key === 'Backspace') { await applyHotkey(recording.id, ''); return; }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+    const named = KEY_MAP[e.key] || e.key;
+    let accel = '';
+    if (e.ctrlKey || e.altKey) {
+      const mod = [];
+      if (e.ctrlKey) mod.push('Ctrl');
+      if (e.altKey) mod.push('Alt');
+      if (e.shiftKey) mod.push('Shift');
+      const k = e.key.length === 1 ? e.key.toUpperCase() : named;
+      accel = mod.join('+') + '+' + k;
+    } else if (/^F\d{1,2}$/.test(e.key) || ['Up', 'Down', 'Left', 'Right'].includes(named)) {
+      accel = named;
+    } else {
+      msg('单键仅支持 F1-F12 或方向键;组合键需含 Ctrl 或 Alt', true);
+      return;
+    }
+    await applyHotkey(recording.id, accel);
+  });
+
+  function render() {
+    const list = $('#list');
+    list.innerHTML = '';
+    const active = plugins.filter((p) => p.enabled).length;
+    $('#tip').textContent = `共 ${plugins.length} 个插件,启用 ${active} 个 · 停用立即生效 · 新插件放入目录后点刷新`;
+    plugins.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'row' + (p.enabled ? '' : ' off');
+
+      const ic = document.createElement('div');
+      ic.className = 'ic';
+      ic.textContent = p.icon || '🧩';
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      const nmLine = document.createElement('div');
+      nmLine.className = 'nm';
+      nmLine.append(p.displayName);
+      const ver = document.createElement('span');
+      ver.className = 'ver';
+      ver.textContent = 'v' + p.version + (p.builtin ? ' · 内置' : ' · 用户');
+      nmLine.append(ver);
+      const ds = document.createElement('div');
+      ds.className = 'ds';
+      ds.textContent = p.description || '';
+      const pathLine = document.createElement('div');
+      pathLine.className = 'path';
+      pathLine.textContent = p.dir;
+      info.append(nmLine, ds);
+      if (p.commands && p.commands.length) {
+        const cmds = document.createElement('div');
+        cmds.className = 'cmds';
+        p.commands.forEach((c) => {
+          const s = document.createElement('span');
+          s.className = 'cmd';
+          s.textContent = c.word;
+          cmds.append(s);
+        });
+        info.append(cmds);
+      }
+      info.append(pathLine);
+
+      const hk = document.createElement('div');
+      hk.className = 'hk';
+      const hkbtn = document.createElement('button');
+      hkbtn.className = 'hkbtn' + (p.hotkey ? ' set' : '');
+      hkbtn.textContent = p.hotkey ? '⌨ ' + p.hotkey : '⌨ 热键';
+      hkbtn.title = '设置直达快捷键:按下立即打开此插件';
+      hkbtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startRecord(p, hkbtn);
+      });
+      hk.appendChild(hkbtn);
+
+      const sw = document.createElement('label');
+      sw.className = 'switch';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = p.enabled;
+      if (p.id === 'settings' || p.id === 'plugin-manager') {
+        cb.disabled = true;
+        cb.checked = true;
+      }
+      cb.addEventListener('change', async () => {
+        const r = await ztools.api.pluginsSetEnabled(p.id, cb.checked);
+        if (r && r.ok === false) {
+          msg(r.error, true);
+          cb.checked = !cb.checked;
+          return;
+        }
+        msg(`已${cb.checked ? '启用' : '停用'} ${p.displayName}`);
+        load();
+      });
+      const sl = document.createElement('span');
+      sl.className = 'slider';
+      sw.append(cb, sl);
+
+      row.append(ic, info, hk, sw);
+      list.appendChild(row);
+    });
+  }
+
+  async function load(rescan) {
+    if (rescan) await ztools.api.pluginsRescan();
+    plugins = (await ztools.api.pluginsList()) || [];
+    plugins.sort((a, b) => (a.enabled === b.enabled ? a.displayName.localeCompare(b.displayName) : a.enabled ? -1 : 1));
+    render();
+  }
+
+  $('#refresh').addEventListener('click', async () => {
+    const r = await ztools.api.pluginsRescan();
+    load();
+    if (r && r.errors && r.errors.length) {
+      showErrors(r.errors);
+      msg(`已重新扫描:${r.total} 个插件,${r.errors.length} 个加载失败`, true);
+    } else {
+      hideErrors();
+      msg('已重新扫描');
+    }
+  });
+  $('#openDir').addEventListener('click', () => ztools.api.openPluginsFolder());
+
+  function showErrors(errs) {
+    const box = $('#errs');
+    const list = $('#errList');
+    list.innerHTML = '';
+    errs.forEach((e) => {
+      const d = document.createElement('div');
+      d.className = 'err-item';
+      d.textContent = e;
+      list.appendChild(d);
+    });
+    box.style.display = '';
+  }
+  function hideErrors() { $('#errs').style.display = 'none'; }
+
+  load();
+})();
+</script>
+</body>
+</html>

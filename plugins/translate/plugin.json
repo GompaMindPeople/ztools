@@ -1,0 +1,11 @@
+{
+  "id": "translate",
+  "displayName": "翻译",
+  "version": "1.0.0",
+  "description": "中英互译,自动检测方向(输入或剪贴板)",
+  "main": "index.html",
+  "icon": "🌐",
+  "commands": [
+    { "word": "fy", "description": "翻译,如 fy hello world" }
+  ]
+}

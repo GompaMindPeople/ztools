@@ -1,0 +1,11 @@
+{
+  "id": "json",
+  "displayName": "JSON 工具",
+  "version": "1.0.0",
+  "description": "格式化、压缩、校验、转义 JSON(自动读取剪贴板)",
+  "main": "index.html",
+  "icon": "🧾",
+  "commands": [
+    { "word": "json", "description": "JSON 格式化/压缩/校验,如 json {\"a\":1}" }
+  ]
+}

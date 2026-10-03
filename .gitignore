@@ -1,0 +1,18 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.tmp/
+*.log
+.DS_Store
+smoke-result.txt
+
+# 本地数据/用户数据(正常运行时位于 %APPDATA%/ztools-launcher,此处为双保险,
+# 防止误在项目目录运行产生时被提交)
+settings.json
+file-index.json
+clipboard-history.json
+clipboard-images/
+recents.json
+plugin-db.json
+everything.zip
+pin-*.html
