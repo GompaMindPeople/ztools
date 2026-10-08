@@ -276,13 +276,20 @@ async function buildSearchResults(raw) {
 // ---------------------------------------------------------------- 文件索引
 
 function resolveSearchDirs() {
-  const custom = store.get().searchDirs || [];
-  if (custom.length) return custom.filter((d) => fs.existsSync(d));
+  // 默认用户目录始终包含,自定义目录(设置页/右键菜单添加)追加,去重
   const home = os.homedir();
-  return ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Videos', 'Music',
+  const defaults = ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Videos', 'Music',
     'OneDrive\\Desktop', 'OneDrive\\Documents']
     .map((n) => path.join(home, n))
     .filter((d) => fs.existsSync(d));
+  const custom = (store.get().searchDirs || []).filter((d) => fs.existsSync(d));
+  const seen = new Set();
+  return [...defaults, ...custom].filter((d) => {
+    const k = d.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 function sendIndexStatus() {
@@ -506,6 +513,87 @@ async function translateText(text, to) {
   return { ok: false, error: '翻译服务暂不可用(有道 / Google / MyMemory 均失败),请检查网络' };
 }
 
+// ---------------------------------------------------------------- 右键菜单"添加到 ZTools 索引"
+
+const CTX_KEYS = [
+  'HKCU\\Software\\Classes\\*\\shell\\ZToolsAddIndex',
+  'HKCU\\Software\\Classes\\Directory\\shell\\ZToolsAddIndex'
+];
+
+function contextMenuCommand() {
+  const exe = process.execPath;
+  const appPrefix = process.defaultApp ? `"${app.getAppPath()}" ` : '';
+  return `"${exe}" ${appPrefix}--add-index "%1"`;
+}
+
+function regExec(args) {
+  return new Promise((resolve) => {
+    execFile('reg', args, { windowsHide: true }, (err) => resolve(!err));
+  });
+}
+
+async function contextMenuRegister() {
+  const cmd = contextMenuCommand();
+  for (const key of CTX_KEYS) {
+    await regExec(['add', key, '/ve', '/d', '添加到 ZTools 索引', '/f']);
+    await regExec(['add', key, '/v', 'Icon', '/d', process.execPath, '/f']);
+    await regExec(['add', key + '\\command', '/ve', '/d', cmd, '/f']);
+  }
+  return { ok: true };
+}
+
+async function contextMenuRemove() {
+  for (const key of CTX_KEYS) await regExec(['delete', key, '/f']);
+  return { ok: true };
+}
+
+async function contextMenuStatus() {
+  for (const key of CTX_KEYS) {
+    const ok = await regExec(['query', key]);
+    if (!ok) return false;
+  }
+  return true;
+}
+
+// 把一批路径追加到索引目录(右键菜单/命令行入口),返回新增列表
+function addIndexDirs(paths) {
+  const cur = store.get().searchDirs || [];
+  const curSet = new Set(cur.map((c) => c.toLowerCase()));
+  const added = [];
+  for (const p of paths) {
+    const s = String(p || '').replace(/^"|"$/g, '').trim();
+    if (!/^[a-zA-Z]:[\\/]/.test(s)) continue;
+    if (!fs.existsSync(s)) continue;
+    if (curSet.has(s.toLowerCase())) continue;
+    curSet.add(s.toLowerCase());
+    added.push(s);
+  }
+  if (added.length) {
+    store.set({ searchDirs: [...cur, ...added] });
+    startIndexBuild(true);
+  }
+  return added;
+}
+
+// 从命令行参数提取 --add-index 后的路径列表(支持一次多个)
+function parseAddIndexArgv(argv) {
+  const i = argv.indexOf('--add-index');
+  if (i === -1) return [];
+  return argv.slice(i + 1).filter((a) => /^[a-zA-Z]:[\\/]/.test(a));
+}
+
+function handleAddIndex(argv) {
+  const paths = parseAddIndexArgv(argv);
+  if (!paths.length) return false;
+  const added = addIndexDirs(paths);
+  if (win) {
+    showWindow();
+    win.webContents.send('index:added', { added, total: paths.length });
+  }
+  console.log(`[add-index] 请求 ${paths.length} 个,新增 ${added.length} 个`);
+  return true;
+}
+
 // ---------------------------------------------------------------- 插件身份与 API
 
 function pluginIdFromSender(wc) {
@@ -602,6 +690,9 @@ async function pluginApi(event, payload) {
       if (w && pluginWindows.has(w)) w.close();
       return true;
     }
+    case 'contextMenuRegister': return contextMenuRegister();
+    case 'contextMenuRemove': return contextMenuRemove();
+    case 'contextMenuStatus': return contextMenuStatus();
     case 'everythingSearch': {
       // 代理请求 Everything 的 HTTP 服务器(绕开 webview 的 CORS 限制)
       const q = String(args[0] || '').trim();
@@ -830,7 +921,10 @@ function runSmokeTest() {
 // ---------------------------------------------------------------- 启动
 
 function bootstrap() {
-  app.on('second-instance', () => showWindow());
+  // 已运行时再次启动(如资源管理器右键菜单调用),转发参数处理
+  app.on('second-instance', (_e, argv) => {
+    if (!handleAddIndex(argv)) showWindow();
+  });
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.ztools.launcher');
@@ -890,6 +984,7 @@ function bootstrap() {
     }
     for (const err of registerPluginHotkeys()) console.warn('[plugin-hotkey]', err);
     if (store.get().panelPinned) setPanelPinned(true, false); // 恢复上次的置顶状态
+    handleAddIndex(process.argv); // 应用未运行时通过右键菜单/命令行启动
     startIndexBuild(false);
   });
 

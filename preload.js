@@ -7,7 +7,7 @@ const pluginPreloadUrl = new URL('../pluginPreload.js', location.href).href;
 
 const INVOKE_ALLOW = ['search', 'execute', 'get-icon', 'record-recent', 'hide-window', 'copy-text', 'find-plugin', 'devtools', 'panel-pin'];
 const SEND_ALLOW = ['context-menu'];
-const ON_ALLOW = ['window:shown', 'window:hidden', 'plugin:subinput-opts', 'plugin:exit', 'index:status', 'open-plugin-by-id', 'debug:search', 'panel:pinned'];
+const ON_ALLOW = ['window:shown', 'window:hidden', 'plugin:subinput-opts', 'plugin:exit', 'index:status', 'open-plugin-by-id', 'debug:search', 'panel:pinned', 'index:added'];
 
 contextBridge.exposeInMainWorld('ztoolsHost', {
   pluginPreloadUrl,

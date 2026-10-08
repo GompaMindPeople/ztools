@@ -400,6 +400,11 @@
   H.on('index:status', ({ building, count }) => {
     indexStatus.textContent = building ? `文件索引中… ${count}` : `文件索引 ${count}`;
   });
+  H.on('index:added', ({ added, total }) => {
+    exitPlugin();
+    if (added && added.length) toast(`已添加 ${added.length} 个索引目录(共选 ${total}),索引重建中`);
+    else toast(`所选 ${total} 个路径已在索引中`);
+  });
   H.on('open-plugin-by-id', (payload) => {
     Promise.resolve(typeof payload === 'string' ? H.invoke('find-plugin', payload) : payload)
       .then((item) => { if (item) openPlugin(item); });
