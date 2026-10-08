@@ -8,7 +8,8 @@ const DEFAULTS = {
   engine: 'bing',           // 网页搜索引擎 bing | baidu | google
   hideOnBlur: true,         // 失焦自动隐藏
   notifyEnabled: false,     // 插件系统通知(默认关闭)
-  searchDirs: [],           // 文件索引目录;为空则使用默认用户目录
+  searchDirs: [],           // 递归索引的自定义目录(默认用户目录始终包含)
+  flatPaths: [],            // 右键菜单添加的路径:文件夹仅索引第一层,文件仅索引自身
   disabledPlugins: [],      // 已停用的插件 id(核心插件除外)
   pluginHotkeys: {}         // 插件直达热键 { pluginId: 'F1' }
 };

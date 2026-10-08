@@ -175,6 +175,22 @@ async function main() {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  await okAsync('FileIndex 平铺路径(仅第一层)', async () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'top.txt'), 'a');
+    fs.mkdirSync(path.join(dir, 'sub'));
+    fs.writeFileSync(path.join(dir, 'sub', 'deep.txt'), 'b');
+    fs.writeFileSync(path.join(dir, 'single-file.txt'), 'c');
+    const idx = new FileIndex(path.join(dir, 'index.json'));
+    await idx.rebuild([], [dir, path.join(dir, 'single-file.txt')]);
+    const names = idx.entries.map((e) => e.n);
+    assert.ok(names.includes('top.txt'), '第一层文件应入索引');
+    assert.ok(names.includes('sub'), '第一层子目录作为条目');
+    assert.ok(!names.includes('deep.txt'), '子目录内容不应入索引');
+    assert.ok(names.includes('single-file.txt'), '单个文件路径应入索引');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   ok('Store 读写与合并', () => {
     const dir = tmp();
     const file = path.join(dir, 'settings.json');

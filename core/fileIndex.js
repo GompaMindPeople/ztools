@@ -45,11 +45,29 @@ class FileIndex {
       || Date.now() - this.builtAt > 7 * 24 * 3600e3;
   }
 
-  async rebuild(dirs, onProgress, isCancelled) {
+  // dirs: 递归遍历的根目录;flatPaths: 仅索引第一层的路径(文件夹一层/文件自身)
+  async rebuild(dirs, flatPaths = [], onProgress, isCancelled) {
     this.building = true;
     const entries = [];
-    const stack = dirs.map((d) => ({ d, depth: 0 }));
     let cancelled = false;
+    // 平铺部分:文件收自身,文件夹只收第一层(不递归)
+    for (const p of flatPaths) {
+      if (isCancelled && isCancelled()) { cancelled = true; break; }
+      let st;
+      try { st = await fsp.stat(p); } catch { continue; }
+      if (st.isFile()) {
+        entries.push(mkEntry(path.basename(p), p, 0));
+      } else if (st.isDirectory()) {
+        let ds;
+        try { ds = await fsp.readdir(p, { withFileTypes: true }); } catch { continue; }
+        for (const de of ds) {
+          if (de.name.startsWith('.') || de.name.startsWith('$')) continue;
+          entries.push(mkEntry(de.name, path.join(p, de.name), de.isDirectory() ? 1 : 0));
+        }
+        if (onProgress) onProgress(entries.length);
+      }
+    }
+    const stack = dirs.map((d) => ({ d, depth: 0 }));
     while (stack.length) {
       if (isCancelled && isCancelled()) { cancelled = true; break; }
       const { d, depth } = stack.pop();

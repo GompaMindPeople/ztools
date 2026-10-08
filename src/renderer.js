@@ -402,7 +402,7 @@
   });
   H.on('index:added', ({ added, total }) => {
     exitPlugin();
-    if (added && added.length) toast(`已添加 ${added.length} 个索引目录(共选 ${total}),索引重建中`);
+    if (added && added.length) toast(`已添加 ${added.length} 项到索引(文件夹仅第一层),重建中`);
     else toast(`所选 ${total} 个路径已在索引中`);
   });
   H.on('open-plugin-by-id', (payload) => {

@@ -276,7 +276,7 @@ async function buildSearchResults(raw) {
 // ---------------------------------------------------------------- 文件索引
 
 function resolveSearchDirs() {
-  // 默认用户目录始终包含,自定义目录(设置页/右键菜单添加)追加,去重
+  // 递归部分:默认用户目录始终包含 + 设置页自定义目录;平铺部分:右键菜单添加(仅第一层)
   const home = os.homedir();
   const defaults = ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Videos', 'Music',
     'OneDrive\\Desktop', 'OneDrive\\Documents']
@@ -284,12 +284,14 @@ function resolveSearchDirs() {
     .filter((d) => fs.existsSync(d));
   const custom = (store.get().searchDirs || []).filter((d) => fs.existsSync(d));
   const seen = new Set();
-  return [...defaults, ...custom].filter((d) => {
+  const recursive = [...defaults, ...custom].filter((d) => {
     const k = d.toLowerCase();
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
+  const flat = (store.get().flatPaths || []).filter((p) => fs.existsSync(p));
+  return { recursive, flat };
 }
 
 function sendIndexStatus() {
@@ -308,8 +310,10 @@ function startIndexBuild(force) {
   }
   if (!force && !fileIndex.needsBuild()) return;
   const token = ++indexBuildToken;
+  const { recursive, flat } = resolveSearchDirs();
   fileIndex.rebuild(
-    resolveSearchDirs(),
+    recursive,
+    flat,
     () => sendIndexStatus(),
     () => token !== indexBuildToken
   ).then(() => sendIndexStatus()).catch((e) => console.error('[index] 构建失败', e));
@@ -555,21 +559,24 @@ async function contextMenuStatus() {
   return true;
 }
 
-// 把一批路径追加到索引目录(右键菜单/命令行入口),返回新增列表
+// 把右键菜单提交的路径加入"平铺索引"(文件夹仅第一层,文件仅自身)
 function addIndexDirs(paths) {
-  const cur = store.get().searchDirs || [];
-  const curSet = new Set(cur.map((c) => c.toLowerCase()));
+  const curFlat = store.get().flatPaths || [];
+  const flatSet = new Set(curFlat.map((c) => c.toLowerCase()));
+  // 已被递归索引覆盖的路径不再重复添加
+  const { recursive } = resolveSearchDirs();
+  const recursiveSet = new Set(recursive.map((d) => d.toLowerCase()));
   const added = [];
   for (const p of paths) {
     const s = String(p || '').replace(/^"|"$/g, '').trim();
     if (!/^[a-zA-Z]:[\\/]/.test(s)) continue;
     if (!fs.existsSync(s)) continue;
-    if (curSet.has(s.toLowerCase())) continue;
-    curSet.add(s.toLowerCase());
+    if (flatSet.has(s.toLowerCase()) || recursiveSet.has(s.toLowerCase())) continue;
+    flatSet.add(s.toLowerCase());
     added.push(s);
   }
   if (added.length) {
-    store.set({ searchDirs: [...cur, ...added] });
+    store.set({ flatPaths: [...curFlat, ...added] });
     startIndexBuild(true);
   }
   return added;
@@ -743,7 +750,7 @@ async function pluginApi(event, payload) {
       }
       delete patch.hotkey;
       store.set(patch);
-      if (patch.searchDirs) startIndexBuild(true);
+      if (patch.searchDirs || patch.flatPaths) startIndexBuild(true);
       if (patch.disabledPlugins) reloadPlugins();
       return { ok: true };
     }
