@@ -24,9 +24,28 @@
     mode: 'search',       // search | plugin
     icons: new Map(),
     debounce: 0,
-    toastTimer: 0
+    toastTimer: 0,
+    ctxRegistered: null   // 右键菜单注册状态(null=未知)
   };
   let blankTimer = 0; // 退出插件后延迟释放 webview 的定时器
+
+  H.on('ctx-menu-status', ({ registered }) => {
+    state.ctxRegistered = !!registered;
+    const bar = document.getElementById('ctxHint');
+    if (bar) bar.style.display = state.ctxRegistered || localStorage.getItem('ctxHintDismissed') ? 'none' : '';
+  });
+
+  // 右键菜单开启引导
+  const ctxHintGo = document.getElementById('ctxHintGo');
+  if (ctxHintGo) {
+    ctxHintGo.addEventListener('click', () => {
+      H.invoke('find-plugin', 'settings').then((p) => { if (p) openPlugin(p); });
+    });
+    document.getElementById('ctxHintNo').addEventListener('click', () => {
+      localStorage.setItem('ctxHintDismissed', '1');
+      document.getElementById('ctxHint').style.display = 'none';
+    });
+  }
 
   // ---------------- 搜索 ----------------
 
@@ -170,6 +189,12 @@
     resultsEl.style.display = 'none';
     emptyEl.style.display = '';
     const data = state.data || {};
+
+    // 右键菜单未注册时的引导提示(可关闭)
+    const hint = document.getElementById('ctxHint');
+    if (hint) {
+      hint.style.display = (state.ctxRegistered === false && !localStorage.getItem('ctxHintDismissed')) ? '' : 'none';
+    }
 
     const recentWrap = $('#recentWrap');
     const recentList = $('#recentList');

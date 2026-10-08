@@ -139,6 +139,9 @@ function createWindow() {
   });
   win.webContents.on('did-finish-load', () => {
     sendIndexStatus();
+    contextMenuStatus().then((on) => {
+      if (win) win.webContents.send('ctx-menu-status', { registered: on });
+    });
     if (IS_SMOKE) runSmokeTest();
   });
   // 渲染进程日志/异常转发到主进程终端,便于排查

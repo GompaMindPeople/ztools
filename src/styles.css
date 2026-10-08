@@ -167,6 +167,34 @@ body {
 }
 .hero-sub { margin-top: 8px; color: var(--dim); font-size: 13px; }
 
+.ctx-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(91, 140, 255, 0.08);
+  border: 1px solid #32406e;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 0 4px 18px;
+  color: #b9c6ea;
+  font-size: 12px;
+}
+.ctx-hint button {
+  background: #4a6dff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font: 12px inherit;
+  flex: none;
+}
+.ctx-hint button.plain {
+  background: none;
+  color: #6d6d85;
+}
+.ctx-hint button.plain:hover { color: #9a9ab0; }
+
 kbd {
   background: var(--panel2);
   border: 1px solid var(--line);
