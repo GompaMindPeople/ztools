@@ -1,0 +1,11 @@
+{
+  "id": "hosts",
+  "displayName": "Hosts 管理",
+  "version": "1.0.0",
+  "description": "多份 hosts 方案,一键切换写入系统 hosts",
+  "main": "index.html",
+  "icon": "🔗",
+  "commands": [
+    { "word": "hosts", "description": "管理/切换 hosts 方案" }
+  ]
+}

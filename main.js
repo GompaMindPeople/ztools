@@ -703,6 +703,45 @@ async function pluginApi(event, payload) {
     case 'contextMenuRegister': return contextMenuRegister();
     case 'contextMenuRemove': return contextMenuRemove();
     case 'contextMenuStatus': return contextMenuStatus();
+    case 'hostsRead': {
+      try {
+        return { ok: true, content: fs.readFileSync('C:\\Windows\\System32\\drivers\\etc\\hosts', 'utf8') };
+      } catch (e) {
+        return { ok: false, error: '读取 hosts 失败: ' + e.message };
+      }
+    }
+    case 'hostsWrite': {
+      const content = String(args[0] ?? '');
+      const hostsPath = 'C:\\Windows\\System32\\drivers\\etc\\hosts';
+      const data = content.replace(/\r?\n/g, '\r\n');
+      const norm = (s) => s.replace(/\r\n/g, '\n');
+      const applyCmd = path.join(userDataDir(), 'hosts-apply.cmd');
+      try {
+        fs.writeFileSync(hostsPath, data);
+        execFile('ipconfig', ['/flushdns'], () => { });
+        return { ok: true, elevated: false };
+      } catch (e) {
+        // 无权限:写暂存文件 + 生成脚本,弹 UAC 由用户确认后提权应用
+        try {
+          const tmp = path.join(userDataDir(), 'hosts-staged.txt');
+          fs.writeFileSync(tmp, data);
+          fs.writeFileSync(applyCmd,
+            `@echo off\r\ncopy /Y "${tmp}" "${hostsPath}"\r\nipconfig /flushdns\r\n`);
+        } catch (e2) {
+          return { ok: false, error: '暂存失败: ' + e2.message };
+        }
+        const elevated = await new Promise((resolve) => {
+          execFile('powershell', ['-NoProfile', '-Command',
+            `Start-Process -FilePath '${applyCmd.replace(/'/g, "''")}' -Verb RunAs -WindowStyle Hidden -Wait`],
+            { timeout: 60000 }, (err) => resolve(!err));
+        });
+        if (!elevated) return { ok: false, error: '无权限写入 hosts(UAC 被取消)。请以管理员身份运行 ZTools 后重试' };
+        try {
+          if (norm(fs.readFileSync(hostsPath, 'utf8')) === norm(content)) return { ok: true, elevated: true };
+        } catch { /* 校验失败继续报错 */ }
+        return { ok: false, error: '提权写入后校验不一致,请重试' };
+      }
+    }
     case 'everythingSearch': {
       // 代理请求 Everything 的 HTTP 服务器(绕开 webview 的 CORS 限制)
       const q = String(args[0] || '').trim();

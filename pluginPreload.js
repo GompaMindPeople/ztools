@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('ztools', {
     pluginsSetHotkey: (id, accel) => invoke('pluginsSetHotkey', [id, accel || '']),
     contextMenuStatus: () => invoke('contextMenuStatus', []),
     contextMenuRegister: () => invoke('contextMenuRegister', []),
-    contextMenuRemove: () => invoke('contextMenuRemove', [])
+    contextMenuRemove: () => invoke('contextMenuRemove', []),
+    hostsRead: () => invoke('hostsRead', []),
+    hostsWrite: (content) => invoke('hostsWrite', [content])
   }
 });

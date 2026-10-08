@@ -90,7 +90,7 @@ async function main() {
     const host = new PluginHost([path.join(__dirname, '..', 'plugins')]);
     const errs = host.load();
     assert.deepStrictEqual(errs, [], '内置插件不应有加载错误');
-    assert.ok(host.plugins.length >= 8, '至少 10 个内置插件,实际 ' + host.plugins.length);
+    assert.ok(host.plugins.length >= 8, '至少 11 个内置插件,实际 ' + host.plugins.length);
     const items = host.searchCommands('calc sqrt(2)', 3);
     assert.equal(items[0].plugin.id, 'calculator');
     assert.equal(items[0].plugin.rest, 'sqrt(2)');

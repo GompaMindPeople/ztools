@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Hosts 管理</title>
+<style>
+  body { margin: 0; padding: 14px 18px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; display: flex; height: 100vh; box-sizing: border-box; gap: 14px; overflow: hidden; }
+  .left { width: 230px; flex: none; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+  .left button.small { flex: none; }
+  .prof { background: #15151c; border: 1px solid #2c2c3a; border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+  .prof:hover { border-color: #5b8cff; }
+  .prof.on { border-color: #5b8cff; background: rgba(91,140,255,.1); }
+  .prof .nm { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .prof .dot { width: 8px; height: 8px; border-radius: 50%; background: #7ee2a0; flex: none; }
+  .prof .ops { display: flex; gap: 6px; margin-top: 4px; }
+  .prof .ops button { padding: 1px 8px; font-size: 11px; }
+  .right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .bar .name-input { background: #101018; border: 1px solid #33334a; border-radius: 8px; color: #ececf4; padding: 5px 10px; font: inherit; width: 160px; }
+  button { background: #2e2e44; color: #dfe3ff; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button:hover { background: #3a3a58; }
+  button.primary { background: #4a6dff; color: #fff; }
+  button.danger:hover { background: #6e3232; color: #ffb3b3; }
+  .status { font-size: 12px; color: #9a9ab0; min-height: 18px; margin-bottom: 8px; }
+  .status.ok { color: #7ee2a0; }
+  .status.err { color: #ff9a9a; }
+  textarea { flex: 1; width: 100%; box-sizing: border-box; background: #15151c; color: #d6d6e2; border: 1px solid #2c2c3a; border-radius: 10px; padding: 10px 12px; font: 13px/1.5 Consolas, "Courier New", monospace; resize: none; outline: none; white-space: pre; overflow: auto; }
+  textarea:focus { border-color: #4a6dff; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <button class="small primary" id="newBtn">＋ 新建方案</button>
+    <button class="small" id="importBtn">从系统 hosts 导入</button>
+    <div id="list"></div>
+  </div>
+  <div class="right">
+    <div class="bar">
+      <input class="name-input" id="name" placeholder="方案名称">
+      <button id="saveBtn">保存修改</button>
+      <button class="primary" id="applyBtn">✔ 启用此方案</button>
+      <button id="dupBtn">复制方案</button>
+      <button class="danger" id="delBtn">删除</button>
+    </div>
+    <div class="status" id="status">选择或新建一份方案</div>
+    <textarea id="ta" spellcheck="false" placeholder="# 例:# 127.0.0.1  localhost&#10;192.168.1.10  dev.example.com"></textarea>
+  </div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let profiles = [];    // [{id, name, content, at}]
+  let activeId = '';
+  let curId = '';       // 当前编辑的方案
+  let filter = '';
+
+  function setStatus(text, cls) {
+    const el = $('#status');
+    el.textContent = text;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function render() {
+    const list = $('#list');
+    list.innerHTML = '';
+    const shown = profiles.filter((p) => !filter || p.name.toLowerCase().includes(filter.toLowerCase()));
+    for (const p of shown) {
+      const d = document.createElement('div');
+      d.className = 'prof' + (p.id === curId ? ' on' : '');
+      const nm = document.createElement('div');
+      nm.className = 'nm';
+      if (p.id === activeId) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.title = '当前生效';
+        nm.appendChild(dot);
+      }
+      nm.appendChild(document.createTextNode(p.name));
+      const ops = document.createElement('div');
+      ops.className = 'ops';
+      const use = document.createElement('button');
+      use.textContent = p.id === activeId ? '生效中' : '启用';
+      use.disabled = p.id === activeId;
+      use.addEventListener('click', (e) => { e.stopPropagation(); apply(p.id); });
+      ops.appendChild(use);
+      d.append(nm, ops);
+      d.addEventListener('click', () => select(p.id));
+      list.appendChild(d);
+    }
+  }
+
+  function select(id) {
+    const p = profiles.find((x) => x.id === id);
+    if (!p) return;
+    curId = id;
+    $('#name').value = p.name;
+    $('#ta').value = p.content;
+    setStatus(`编辑「${p.name}」${p.id === activeId ? '(当前生效)' : ''}`);
+    render();
+  }
+
+  async function persist() {
+    await ztools.api.dbSet('profiles', profiles);
+    await ztools.api.dbSet('activeId', activeId);
+  }
+
+  function newId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  async function createProfile(name, content) {
+    const p = { id: newId(), name: name || `方案 ${profiles.length + 1}`, content: content || '', at: Date.now() };
+    profiles.unshift(p);
+    await persist();
+    select(p.id);
+    return p;
+  }
+
+  async function apply(id) {
+    const p = profiles.find((x) => x.id === id);
+    if (!p) return;
+    setStatus(`正在启用「${p.name}」…`);
+    const r = await ztools.api.hostsWrite(p.content);
+    if (r && r.ok) {
+      activeId = id;
+      await persist();
+      setStatus(`✓ 「${p.name}」已写入系统 hosts,DNS 缓存已刷新${r.elevated ? '(经 UAC 提权)' : ''}`, 'ok');
+      render();
+    } else {
+      setStatus((r && r.error) || '写入失败', 'err');
+    }
+  }
+
+  $('#newBtn').addEventListener('click', () => createProfile('', '# 新方案\n# 127.0.0.1  example.com\n'));
+  $('#importBtn').addEventListener('click', async () => {
+    const r = await ztools.api.hostsRead();
+    if (!r || !r.ok) return setStatus((r && r.error) || '读取系统 hosts 失败', 'err');
+    const cur = r.content;
+    const dup = profiles.find((p) => p.content === cur);
+    if (dup) { select(dup.id); setStatus('系统 hosts 与已有方案一致,已选中', 'ok'); return; }
+    await createProfile('系统配置 ' + new Date().toLocaleDateString('zh-CN'), cur);
+    setStatus('已从系统 hosts 导入为新方案', 'ok');
+  });
+  $('#saveBtn').addEventListener('click', async () => {
+    const p = profiles.find((x) => x.id === curId);
+    if (!p) return setStatus('请先选择方案', 'err');
+    p.name = $('#name').value.trim() || p.name;
+    p.content = $('#ta').value;
+    p.at = Date.now();
+    await persist();
+    setStatus(`✓ 已保存「${p.name}」`, 'ok');
+    render();
+  });
+  $('#applyBtn').addEventListener('click', async () => {
+    // 先保存编辑内容再启用
+    const p = profiles.find((x) => x.id === curId);
+    if (!p) return setStatus('请先选择方案', 'err');
+    p.content = $('#ta').value;
+    p.name = $('#name').value.trim() || p.name;
+    await persist();
+    apply(curId);
+  });
+  $('#dupBtn').addEventListener('click', async () => {
+    const p = profiles.find((x) => x.id === curId);
+    if (!p) return;
+    await createProfile(p.name + ' 副本', p.content);
+    setStatus('已复制为新方案', 'ok');
+  });
+  $('#delBtn').addEventListener('click', async () => {
+    if (!curId) return;
+    profiles = profiles.filter((x) => x.id !== curId);
+    if (activeId === curId) activeId = '';
+    curId = '';
+    await persist();
+    $('#ta').value = '';
+    $('#name').value = '';
+    setStatus('已删除(系统 hosts 未变动)');
+    render();
+  });
+
+  ztools.onSubInput((v) => { filter = v; render(); });
+
+  (async () => {
+    await ztools.api.setSubInput('搜索方案…');
+    profiles = (await ztools.api.dbGet('profiles')) || [];
+    activeId = (await ztools.api.dbGet('activeId')) || '';
+    if (!profiles.length) {
+      const r = await ztools.api.hostsRead();
+      if (r && r.ok) {
+        await createProfile('当前系统配置', r.content);
+        activeId = profiles[0].id;
+        await persist();
+        setStatus('已将当前系统 hosts 导入为首个方案,编辑后可一键启用', 'ok');
+      }
+    } else if (profiles[0]) {
+      select(profiles[0].id);
+    }
+    render();
+  })();
+})();
+</script>
+</body>
+</html>
