@@ -416,7 +416,8 @@
     }
   });
   H.on('window:hidden', () => {
-    exitPlugin();
+    // 插件模式:保留插件视图与内容(切走再回来原地继续);搜索模式:清空输入
+    if (state.mode === 'plugin') return;
     queryInput.value = '';
     state.q = '';
     doSearch();
