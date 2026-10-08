@@ -8,6 +8,7 @@ const path = require('node:path');
 const fuzzy = require('../core/fuzzy');
 const mathExpr = require('../core/mathExpr');
 const pinyin = require('../core/pinyin');
+const zdiff = require('../core/diff');
 const PluginHost = require('../core/pluginHost');
 const FileIndex = require('../core/fileIndex');
 const Apps = require('../core/apps');
@@ -86,11 +87,36 @@ async function main() {
     assert.equal(fuzzy.fuzzyScore('zzz', 'vscode'), -1);
   });
 
+  ok('diff 行级对比与字符级定位', () => {
+    const a = 'let x = 1\nfoo()\nbar\nend';
+    const b = 'let x = 2\nfoo()\nend';
+    const rows = zdiff.diffLines(a, b);
+    assert.ok(rows.some((r) => r.t === '~' && r.a === 'let x = 1' && r.b === 'let x = 2'), '首行应配对为修改');
+    assert.ok(rows.some((r) => r.t === '-' && r.a === 'bar'), 'bar 应为删除行');
+    assert.equal(rows.filter((r) => r.t === '=').length, 2, '其余为相同行');
+    const mod = rows.find((r) => r.t === '~');
+    assert.deepEqual(mod.ha, [[8, 9]], 'A 行内差异定位到字符 "1"(前缀 "let x = " 后)');
+    assert.deepEqual(mod.hb, [[8, 9]], 'B 行内差异定位到字符 "2"');
+  });
+
+  ok('diff 边界情况与 unified 输出', () => {
+    assert.equal(zdiff.diffLines('', '').length, 1, '两空文本视为一行相同');
+    const fromEmpty = zdiff.diffLines('', 'new');
+    assert.equal(fromEmpty.length, 1, '空文本 → 单行:配对为一行修改');
+    assert.equal(fromEmpty[0].b, 'new');
+    const toEmpty = zdiff.diffLines('old', '');
+    assert.equal(toEmpty.length, 1);
+    assert.equal(toEmpty[0].a, 'old');
+    assert.ok(zdiff.diffLines('a\nb', 'a\nb').every((r) => r.t === '='));
+    const uni = zdiff.toUnifiedText(zdiff.diffLines('a\nx', 'a\ny'));
+    assert.ok(uni.includes('- x') && uni.includes('+ y'));
+  });
+
   await okAsync('PluginHost 加载内置插件并匹配命令', async () => {
     const host = new PluginHost([path.join(__dirname, '..', 'plugins')]);
     const errs = host.load();
     assert.deepStrictEqual(errs, [], '内置插件不应有加载错误');
-    assert.ok(host.plugins.length >= 8, '至少 11 个内置插件,实际 ' + host.plugins.length);
+    assert.ok(host.plugins.length >= 8, '至少 12 个内置插件,实际 ' + host.plugins.length);
     const items = host.searchCommands('calc sqrt(2)', 3);
     assert.equal(items[0].plugin.id, 'calculator');
     assert.equal(items[0].plugin.rest, 'sqrt(2)');

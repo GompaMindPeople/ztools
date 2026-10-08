@@ -1,0 +1,11 @@
+{
+  "id": "diff",
+  "displayName": "文本对比",
+  "version": "1.0.0",
+  "description": "两段文本/代码差异对比,行级+字符级高亮",
+  "main": "index.html",
+  "icon": "🔀",
+  "commands": [
+    { "word": "diff", "description": "对比两段文本/代码的差异" }
+  ]
+}
