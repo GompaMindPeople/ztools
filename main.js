@@ -710,8 +710,50 @@ async function pluginApi(event, payload) {
         return { ok: false, error: '读取 hosts 失败: ' + e.message };
       }
     }
-    case 'hostsWrite': {
-      const content = String(args[0] ?? '');
+    case 'phpRegexTest': {
+      // pattern 带 PHP 分隔符(如 /\d+/u);subject 为待测文本
+      const pattern = String(args[0] || '');
+      const subject = String(args[1] || '');
+      const script = path.join(userDataDir(), 'regex-test.php');
+      try {
+        fs.writeFileSync(script, `<?php
+$in = json_decode(stream_get_contents(STDIN), true);
+$ret = @preg_match_all($in['p'], $in['s'], $m, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+if ($ret === false) { echo json_encode(['error' => 'invalid regex']); exit; }
+$out = [];
+foreach ($m as $set) {
+  $groups = [];
+  foreach ($set as $idx => $g) { $groups[] = [$idx, $g[0], $g[1]]; }
+  $out[] = $groups;
+}
+echo json_encode(['matches' => $out]);
+`);
+      } catch (e) {
+        return { ok: false, error: '脚本写入失败: ' + e.message };
+      }
+      return await new Promise((resolve) => {
+        const p = spawn('php', [script], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+        let out = '', err = '';
+        let done = false;
+        const finish = (v) => { if (!done) { done = true; resolve(v); } };
+        p.stdout.on('data', (d) => { out += d; });
+        p.stderr.on('data', (d) => { err += d; });
+        p.on('error', () => finish({ ok: false, noPhp: true, error: '未检测到 php.exe' }));
+        p.on('close', () => {
+          try {
+            const r = JSON.parse(out);
+            if (r.error) finish({ ok: false, error: r.error });
+            else finish({ ok: true, matches: r.matches });
+          } catch {
+            finish({ ok: false, error: 'PHP 执行失败: ' + (err || out).slice(0, 200) });
+          }
+        });
+        p.stdin.write(JSON.stringify({ p: pattern, s: subject }));
+        p.stdin.end();
+        setTimeout(() => { try { p.kill(); } catch { } finish({ ok: false, error: 'PHP 执行超时' }); }, 5000);
+      });
+    }
+    case 'hostsWrite': {      const content = String(args[0] ?? '');
       const hostsPath = 'C:\\Windows\\System32\\drivers\\etc\\hosts';
       const data = content.replace(/\r?\n/g, '\r\n');
       const norm = (s) => s.replace(/\r\n/g, '\n');

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>正则测试</title>
+<style>
+  body { margin: 0; padding: 14px 18px; background: #1d1d27; color: #ececf4; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui; user-select: none; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  select { background: #101018; color: #ececf4; border: 1px solid #33334a; border-radius: 8px; padding: 5px 8px; font: inherit; }
+  input { background: #101018; color: #ececf4; border: 1px solid #33334a; border-radius: 8px; padding: 6px 10px; font: 13px Consolas, monospace; outline: none; }
+  input:focus { border-color: #4a6dff; }
+  #pattern { flex: 1; min-width: 200px; }
+  #flags { width: 70px; }
+  .tpl { background: #242433; border-radius: 6px; padding: 2px 10px; font-size: 11px; color: #8fb0ff; cursor: pointer; border: none; }
+  .tpl:hover { background: #31314a; }
+  .status { font-size: 12px; min-height: 18px; margin-bottom: 6px; color: #9a9ab0; }
+  .status.err { color: #ff9a9a; }
+  .status.ok { color: #7ee2a0; }
+  .main { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+  textarea { flex: 1; background: #15151c; color: #d6d6e2; border: 1px solid #2c2c3a; border-radius: 10px; padding: 10px 12px; font: 13px/1.5 Consolas, monospace; resize: none; outline: none; white-space: pre-wrap; word-break: break-all; overflow: auto; }
+  textarea:focus { border-color: #4a6dff; }
+  #preview { flex: 1; overflow: auto; background: #15151c; border: 1px solid #2c2c3a; border-radius: 10px; padding: 10px 12px; font: 13px/1.6 Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+  #preview mark { background: rgba(255, 210, 77, 0.25); color: #ffe9a8; border-radius: 3px; padding: 0 1px; }
+  #groups { max-height: 130px; overflow: auto; font-size: 12px; }
+  .g-row { display: flex; gap: 8px; padding: 3px 8px; border-radius: 6px; }
+  .g-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
+  .g-i { color: #8fb0ff; flex: none; }
+  .g-t { color: #d6d6e2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+  .g-p { color: #6d6d85; flex: none; }
+  .split { display: flex; gap: 8px; flex: 1; min-height: 0; }
+  .split > div { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .lbl { font-size: 11px; color: #6d6d85; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <select id="engine">
+      <option value="js">JavaScript</option>
+      <option value="php">PHP (PCRE)</option>
+    </select>
+    <input id="pattern" placeholder="正则表达式,如 \d+ 或 /\d+/u" spellcheck="false">
+    <input id="flags" placeholder="flags" value="g" spellcheck="false">
+  </div>
+  <div class="row" id="tpls">
+    <span class="lbl" style="margin:0">模板:</span>
+  </div>
+  <div class="status" id="status">输入正则与测试文本,实时匹配</div>
+  <div class="main">
+    <div class="split" style="flex:1.2">
+      <div>
+        <div class="lbl">测试文本</div>
+        <textarea id="subject" spellcheck="false" placeholder="粘贴待匹配文本…"></textarea>
+      </div>
+      <div>
+        <div class="lbl">匹配高亮</div>
+        <div id="preview">(等待匹配)</div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">匹配与分组(前 50 条)</div>
+      <div id="groups"></div>
+    </div>
+  </div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let timer = 0;
+  let lastHighlight = [];
+
+  function setStatus(text, cls) {
+    const el = $('#status');
+    el.textContent = text;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // 解析输入:支持带分隔符形式 /pat/flags(PHP/JS 通用习惯)
+  function parsePattern(raw, engine) {
+    let p = raw.trim(), f = $('#flags').value;
+    const m = /^\/(.*)\/([a-zA-Z]*)$/.exec(p);
+    if (m) { p = m[1]; f = (m[2] + f).replace(/(.)(?=.*\1)/g, ''); }
+    if (engine === 'php') return { phpPattern: '/' + p + '/' + f.replace(/[^a-zA-Z]/g, ''), jsPattern: p, flags: f };
+    return { jsPattern: p, flags: f.replace(/[^gimsuy]/g, '') };
+  }
+
+  async function run() {
+    const engine = $('#engine').value;
+    const raw = $('#pattern').value;
+    const subject = $('#subject').value;
+    if (!raw.trim() || !subject) { setStatus('输入正则与测试文本,实时匹配'); renderPreview(subject || '', []); renderGroups([]); return; }
+
+    if (engine === 'php') {
+      const { phpPattern, jsPattern, flags } = parsePattern(raw, 'php');
+      const r = await ztools.api.phpRegexTest(phpPattern, subject);
+      if (r && r.ok) {
+        // PHP: matches = [ [ [idx, text, offset], ... ], ... ]
+        const hits = r.matches.map((set) => ({
+          text: set[0][1], offset: set[0][2],
+          groups: set.map((g) => ({ i: g[0], t: g[1] }))
+        }));
+        finish(hits, `PHP 引擎:匹配 ${hits.length} 处`);
+      } else if (r && r.noPhp) {
+        // 无 php.exe:JS 兼容模式(x 修饰符忽略空白/注释)
+        let jsFlags = flags.replace(/[^gimsuy]/g, '');
+        let p = jsPattern;
+        if (/[x]/.test(flags)) {
+          jsFlags += 'x' === '' ? '' : '';
+          p = p.replace(/\\#/g, '\u0001').replace(/#.*$/gm, '').replace(/\\\s/g, '\u0002').replace(/\s+/g, '').replace(/\u0001/g, '\\#').replace(/\u0002/g, '\\ ');
+        }
+        jsRun(p, jsFlags.replace('x', ''), subject, '未检测到 php.exe,已用 JS 兼容模式执行(高级 PCRE 特性可能不支持)');
+      } else {
+        setStatus('✗ ' + ((r && r.error) || 'PHP 执行失败'), 'err');
+        renderPreview(subject, []); renderGroups([]);
+      }
+      return;
+    }
+    const { jsPattern, flags } = parsePattern(raw, 'js');
+    jsRun(jsPattern, flags, subject);
+  }
+
+  function jsRun(pattern, flags, subject, note) {
+    let re;
+    try { re = new RegExp(pattern, flags); }
+    catch (e) { setStatus('✗ 无效正则: ' + e.message, 'err'); renderPreview(subject, []); renderGroups([]); return; }
+    const hits = [];
+    if (re.global) {
+      let m;
+      let guard = 0;
+      while ((m = re.exec(subject)) && guard++ < 1000) {
+        hits.push({ text: m[0], offset: m.index, groups: m.map((t, i) => ({ i, t: t == null ? '' : t })) });
+        if (m[0] === '') re.lastIndex++;
+      }
+    } else {
+      const m = re.exec(subject);
+      if (m) hits.push({ text: m[0], offset: m.index, groups: m.map((t, i) => ({ i, t: t == null ? '' : t })) });
+    }
+    finish(hits, `JS 引擎:匹配 ${hits.length} 处` + (note ? ' · ' + note : ''), note);
+  }
+
+  function finish(hits, msg, warn) {
+    setStatus((hits.length ? '✓ ' : '') + msg, hits.length ? 'ok' : (warn ? '' : ''));
+    if (warn) setStatus('⚠ ' + msg, '');
+    renderPreview($('#subject').value, hits);
+    renderGroups(hits);
+  }
+
+  function renderPreview(subject, hits) {
+    const box = $('#preview');
+    if (!hits.length) { box.innerHTML = escapeHtml(subject) || '(等待匹配)'; return; }
+    let out = '', pos = 0;
+    for (const h of hits) {
+      if (h.offset < pos) continue;
+      out += escapeHtml(subject.slice(pos, h.offset)) + '<mark>' + escapeHtml(h.text) + '</mark>';
+      pos = h.offset + (h.text.length || 1);
+    }
+    out += escapeHtml(subject.slice(pos));
+    box.innerHTML = out;
+  }
+
+  function renderGroups(hits) {
+    const box = $('#groups');
+    box.innerHTML = '';
+    hits.slice(0, 50).forEach((h, n) => {
+      const extra = h.groups.slice(1).filter((g) => g.t !== '').map((g) => `$${g.i}=${JSON.stringify(g.t)}`).join('  ');
+      const d = document.createElement('div');
+      d.className = 'g-row';
+      d.innerHTML = `<span class="g-i">#${n + 1}</span><span class="g-t">${escapeHtml(JSON.stringify(h.text))}</span><span class="g-p">@${h.offset}${extra ? ' · ' + escapeHtml(extra) : ''}</span>`;
+      box.appendChild(d);
+    });
+  }
+
+  const TPLS = {
+    '邮箱': '[\\w.+-]+@[\\w-]+\\.[\\w.]+',
+    'URL': 'https?://[^\\s]+',
+    'IPv4': '\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b',
+    '手机号': '\\b1[3-9]\\d{9}\\b',
+    '日期': '\\d{4}[-/年]\\d{1,2}[-/月]\\d{1,2}日?',
+    '汉字': '[\\u4e00-\\u9fff]+',
+    '十六进制色': '#[0-9a-fA-F]{3,8}'
+  };
+  for (const [name, pat] of Object.entries(TPLS)) {
+    const b = document.createElement('button');
+    b.className = 'tpl';
+    b.textContent = name;
+    b.addEventListener('click', () => { $('#pattern').value = pat; run(); });
+    $('#tpls').appendChild(b);
+  }
+
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(run, 300); };
+  ['#pattern', '#flags', '#subject'].forEach((s) => $(s).addEventListener('input', schedule));
+  $('#engine').addEventListener('change', run);
+
+  (async () => {
+    await ztools.api.setSubInput('支持 JS 与 PHP 正则,如 /\\d+/u');
+    $('#subject').value = '订单号 A2026-001 与 A2026-002,联系 13800138000,zhangsan@example.com\n访问 https://example.com/page?id=1 查看详情';
+    if (ztools.query.trim()) $('#pattern').value = ztools.query.trim();
+    run();
+  })();
+})();
+</script>
+</body>
+</html>

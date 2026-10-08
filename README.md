@@ -61,6 +61,7 @@ node scripts/build-green.js
 | `cb` | 剪贴板历史 | `cb` 后在子输入框搜索 |
 | `ts` | 时间戳转换 | `ts 1730000000`、`ts 2026-10-03 12:00` |
 | `s` | 网页搜索 | `s electron 教程` |
+| `re` | 正则测试 | JS / PHP(PCRE)双引擎实时匹配高亮、分组捕获、常用模板;无 php.exe 时自动 JS 兼容 |
 | `diff` | 文本对比 | 双栏输入,行级 + 字符级差异高亮;交换 A/B、剪贴板填充、复制 unified diff |
 | `hosts` | Hosts 管理 | 多份 hosts 方案,一键切换写入系统 hosts(自动刷新 DNS,无权限时 UAC 提权) |
 | `json` | JSON 工具 | 格式化/压缩/校验(错误行列定位)/转义;自动读取剪贴板 |

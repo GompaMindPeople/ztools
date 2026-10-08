@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('ztools', {
     contextMenuRegister: () => invoke('contextMenuRegister', []),
     contextMenuRemove: () => invoke('contextMenuRemove', []),
     hostsRead: () => invoke('hostsRead', []),
-    hostsWrite: (content) => invoke('hostsWrite', [content])
+    hostsWrite: (content) => invoke('hostsWrite', [content]),
+    phpRegexTest: (pattern, subject) => invoke('phpRegexTest', [pattern, subject])
   }
 });

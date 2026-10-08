@@ -1,0 +1,11 @@
+{
+  "id": "regex",
+  "displayName": "正则测试",
+  "version": "1.0.0",
+  "description": "JavaScript / PHP 双引擎正则编辑与测试",
+  "main": "index.html",
+  "icon": "🪄",
+  "commands": [
+    { "word": "re", "description": "正则编辑器,如 re \\d+" }
+  ]
+}
